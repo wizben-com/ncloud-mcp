@@ -370,6 +370,9 @@ async function readJob(args, config, db, owner, fetchImpl, timeoutMs) {
 }
 
 function response(payload, status = 200) {
+  if (payload.jsonrpc === "2.0" && Object.hasOwn(payload, "result")) {
+    payload = { ...payload, result: { ...payload.result, resultType: "complete" } };
+  }
   let serialized = JSON.stringify(payload);
   if (new TextEncoder().encode(serialized).byteLength > LIMITS.rpcResponseBytes) {
     const known = payload.result?.structuredContent ?? {};
@@ -380,7 +383,7 @@ function response(payload, status = 200) {
     const warning = "RESULT_TOO_LARGE: result exceeds the final response limit. " +
       "The known job is retained; do not re-transcribe.";
     serialized = JSON.stringify({ jsonrpc: "2.0", id: payload.id ?? null,
-      result: { isError: true, content: [{ type: "text", text: warning }],
+      result: { resultType: "complete", isError: true, content: [{ type: "text", text: warning }],
         structuredContent: { ...job, error: { code: "RESULT_TOO_LARGE", message: warning } } } });
   }
   return new Response(serialized, { status,
@@ -428,7 +431,13 @@ export function createWorker({ fetchImpl = globalThis.fetch, timeoutMs = 10_000 
         return rpcError(id, -32001, "Authenticated Sites identity required.", 403);
       }
       try {
-        exactObject(rpc.params, ["name", "arguments"], ["name"]);
+        if (isObject(rpc.params) && ["requestState", "inputResponses"].some((key) => Object.hasOwn(rpc.params, key))) {
+          throw new SafeError("Unsupported continuation protocol params: requestState/inputResponses.");
+        }
+        exactObject(rpc.params, ["name", "arguments", "_meta"], ["name"]);
+        if (Object.hasOwn(rpc.params, "_meta") && !isObject(rpc.params._meta)) {
+          throw new SafeError("Invalid request metadata; values suppressed.");
+        }
         const args = Object.hasOwn(rpc.params, "arguments") ? rpc.params.arguments : {};
         const config = configuration(env);
         let payload;

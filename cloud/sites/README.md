@@ -20,6 +20,18 @@ ledger, following the installed Sites MCP contract:
 - `tools/list`: input schemas and side-effect annotations.
 - `tools/call`: MCP content blocks, structured JSON, and `isError` on tool failure.
 
+Compatibility is narrowly scoped to this Sites adapter, not full MCP 2026-07-28
+transport conformance. `tools/call` permits optional object-valued `params._meta`
+with arbitrary opaque vendor/trace/progress keys; it is ignored for authorization,
+tool arguments, storage, hashes and upstream requests. Omitted arguments become
+`{}`; explicit null/array/string arguments remain invalid. The root allowlist
+is unchanged. Continuation params `requestState`/`inputResponses` are explicitly
+unsupported. Every JSON-RPC result has `resultType:"complete"`, including tool
+failures and size-limit results; JSON-RPC error objects do not. The final byte
+limit includes this marker. References: [CallToolRequestParams](https://modelcontextprotocol.io/specification/2026-07-28/schema#calltoolrequestparams),
+[metadata](https://modelcontextprotocol.io/specification/2026-07-28/basic#meta),
+[responses](https://modelcontextprotocol.io/specification/2026-07-28/basic#responses).
+
 | Tool | Behavior |
 | --- | --- |
 | `ncloud_cloud_health` | Authenticated, offline booleans only; never verifies credentials remotely |

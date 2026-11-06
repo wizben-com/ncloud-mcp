@@ -23,26 +23,35 @@ const accepted = { result: "SUCCEEDED", token: "synthetic-token" };
 const noNetwork = () => assert.fail("Provider must not be called");
 function server(fetchImpl = noNetwork, timeoutMs = 10_000) { return createWorker({ fetchImpl, timeoutMs }); }
 async function call(worker, env, name = "clova_speech_submit_async", input = args,
-  owner = "synthetic-owner", rpcId = 1) {
+  owner = "synthetic-owner", rpcId = 1, metadata = undefined) {
   const response = await worker.fetch(new Request("https://adapter.example.com/mcp", {
     method: "POST", headers: { "Content-Type": "application/json", "oai-authenticated-user-id": owner },
-    body: JSON.stringify({ jsonrpc: "2.0", id: rpcId, method: "tools/call", params: { name, arguments: input } }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: rpcId, method: "tools/call", params: { name, arguments: input,
+      ...(metadata === undefined ? {} : { _meta: metadata }) } }),
   }), env);
   const serialized = await response.text();
   assert.ok(new TextEncoder().encode(serialized).byteLength <= LIMITS.rpcResponseBytes);
   for (const value of [accepted.token, base.NCLOUD_SPEECH_SECRET, base.NCLOUD_SPEECH_INVOKE_URL,
     args.location]) assert.ok(!serialized.includes(value), "Private provider values must not escape");
-  return { ...JSON.parse(serialized).result, serialized };
+  const result = JSON.parse(serialized).result;
+  assert.equal(result.resultType, "complete");
+  return { ...result, serialized };
 }
 const job = (result) => result.structuredContent.job_id;
 
 test("concurrent, sequential and fresh-Worker duplicate delivery makes one POST", async () => {
   const settings = { ...base, DB: db() };
   let posts = 0;
-  const fetchImpl = async () => { posts++; await new Promise((r) => setTimeout(r, 5));
+  const fetchImpl = async (_, options) => {
+    assert.ok(!JSON.stringify(options).includes("SYNTHETIC_TRANSPORT_META"));
+    posts++; await new Promise((r) => setTimeout(r, 5));
     return Response.json(accepted); };
   const first = server(fetchImpl);
-  const [a, b] = await Promise.all([call(first, settings), call(first, settings)]);
+  const [a, b] = await Promise.all([
+    call(first, settings, undefined, args, undefined, 1, { trace: "SYNTHETIC_TRANSPORT_META_A",
+      "oai-authenticated-user-id": "synthetic-other-owner", request_id: "SYNTHETIC_TRANSPORT_META_REPLACEMENT" }),
+    call(first, settings, undefined, args, undefined, 1, { progressToken: "SYNTHETIC_TRANSPORT_META_B" }),
+  ]);
   assert.equal(job(a), job(b));
   assert.equal(posts, 1);
   const c = await call(server(noNetwork), settings, undefined,
@@ -52,6 +61,9 @@ test("concurrent, sequential and fresh-Worker duplicate delivery makes one POST"
   assert.equal(c.structuredContent.submission_state, "ACCEPTED");
   const row = settings.DB.sqlite.prepare("SELECT * FROM ncloud_speech_jobs").get();
   assert.equal(row.upstream_token, accepted.token);
+  assert.equal(row.owner_id, "synthetic-owner");
+  assert.equal(row.request_id, args.request_id);
+  assert.ok(!JSON.stringify(row).includes("SYNTHETIC_TRANSPORT_META"));
   for (const value of [base.NCLOUD_SPEECH_SECRET, base.NCLOUD_SPEECH_INVOKE_URL, args.location]) {
     assert.ok(!JSON.stringify(row).includes(value));
   }

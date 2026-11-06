@@ -37,7 +37,10 @@ function request(method, params, { identity = true, ...init } = {}) {
 }
 async function call(server, name, arguments_ = {}, bindings_ = null, options = {}) {
   const response = await server.fetch(request("tools/call", { name, arguments: arguments_ }, options), bindings_ ?? bindings());
-  return { response, rpc: await response.json() };
+  const rpc = await response.json();
+  if (rpc.result) assert.equal(rpc.result.resultType, "complete");
+  else assert.equal(rpc.error?.resultType, undefined);
+  return { response, rpc };
 }
 function safeFailure(rpc) {
   assert.equal(rpc.result.isError, true);
@@ -49,8 +52,9 @@ function safeFailure(rpc) {
 test("Sites discovery and tool schemas expose only the cloud subset", async () => {
   const server = createWorker({ fetchImpl: noNetwork });
   const discovered = await (await server.fetch(request("server/discover"))).json();
-  assert.deepEqual(discovered.result, { supportedVersions: ["2026-07-28"], capabilities: { tools: {} } });
+  assert.deepEqual(discovered.result, { supportedVersions: ["2026-07-28"], capabilities: { tools: {} }, resultType: "complete" });
   const listed = await (await server.fetch(request("tools/list"))).json();
+  assert.equal(listed.result.resultType, "complete");
   assert.equal(listed.result.tools.length, 3);
   const submit = listed.result.tools.find((t) => t.name === "clova_speech_submit_async");
   assert.deepEqual(submit.inputSchema.properties.source.enum, ["url", "object_storage"]);
@@ -84,6 +88,50 @@ test("authenticated health is offline and booleans only; disabled ignores secret
   const defaultArguments = await (await server.fetch(request("tools/call",
     { name: "ncloud_cloud_health" }), {})).json();
   assert.equal(defaultArguments.result.isError, false);
+});
+
+test("transport metadata is an object outside strict tool arguments and is never echoed", async (t) => {
+  const sentinel = "SYNTHETIC_TRANSPORT_META_NEVER_ECHO";
+  const cases = [
+    { name: "empty metadata with empty arguments", params: { arguments: {}, _meta: {} }, ok: true },
+    { name: "opaque metadata with omitted arguments", params: {
+      _meta: { progressToken: sentinel, "oai-authenticated-user-id": sentinel },
+    }, ok: true },
+    ...[null, [], "metadata", 1, true].map((value) => ({
+      name: "reject metadata " + JSON.stringify(value), params: { arguments: {}, _meta: value }, ok: false,
+    })),
+    ...[null, [], "arguments"].map((value) => ({
+      name: "reject arguments " + JSON.stringify(value), params: { arguments: value, _meta: {} }, ok: false,
+    })),
+    { name: "reject extra tool arguments", params: { arguments: { _meta: {} }, _meta: {} }, ok: false },
+    { name: "reject unknown params", params: { arguments: {}, _meta: {}, extra: true }, ok: false },
+    ...["requestState", "inputResponses"].map((key) => ({
+      name: "reject continuation " + key, params: { arguments: {}, [key]: {} }, ok: false, unsupported: true,
+    })),
+  ];
+  const server = createWorker({ fetchImpl: noNetwork });
+  for (const fixture of cases) await t.test(fixture.name, async () => {
+    const result = await server.fetch(request("tools/call", {
+      name: "ncloud_cloud_health", ...fixture.params,
+    }), {});
+    const rpc = await result.json();
+    assert.equal(rpc.result.isError, !fixture.ok);
+    assert.equal(rpc.result.resultType, "complete");
+    if (fixture.unsupported) assert.match(rpc.result.content[0].text, /Unsupported continuation protocol params/);
+    assert.ok(!JSON.stringify(rpc).includes(sentinel));
+    if (fixture.ok) assert.equal(rpc.result.structuredContent.network_check_performed, false);
+  });
+  const anonymous = await server.fetch(request("tools/call", {
+    name: "ncloud_cloud_health", _meta: { "oai-authenticated-user-id": sentinel },
+  }, { identity: false }), {});
+  assert.equal(anonymous.status, 403);
+  assert.equal((await anonymous.json()).error.resultType, undefined);
+  const rootMetadata = await server.fetch(request("tools/call", { name: "ncloud_cloud_health" }, {
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "ncloud_cloud_health" }, _meta: {} }),
+  }), {});
+  assert.equal(rootMetadata.status, 400);
+  assert.equal((await rootMetadata.json()).error.resultType, undefined);
 });
 
 test("URL submission sends verified async fields exactly once; does not forward caller identity", async () => {
@@ -274,6 +322,7 @@ test("only POST JSON /mcp is exposed; no secret intake, uploads, OAuth or local 
   }))).status, 415);
   const unknown = await (await server.fetch(request("unknown"))).json();
   assert.equal(unknown.error.code, -32601);
+  assert.equal(unknown.error.resultType, undefined);
   const batch = await server.fetch(request("tools/list", null, { body: "[]" }));
   assert.equal(batch.status, 400);
   assert.equal(typeof worker.fetch, "function");
