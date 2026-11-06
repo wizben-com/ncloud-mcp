@@ -1,0 +1,11 @@
+{
+  "name": "ncloud-mcp-sites-adapter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check worker/index.js",
+    "test": "node --test test/*.test.mjs",
+    "build": "bash scripts/build.sh",
+    "validate": "node scripts/validate-artifact.mjs"
+  }
+}

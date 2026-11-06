@@ -4,6 +4,8 @@
 
 A small, service-modular NAVER Cloud MCP server. **The first implemented service is CLOVA Speech long-form transcription.** Object Storage management, account/identity, and billing/usage are planned modules, not available tools. No generic cloud API passthrough is provided.
 
+The portable core requires no Dot/OpenAI subscription or Sites/Cloudflare account. A separate, optional [Sites cloud adapter source](cloud/sites/README.md) prepares an owner-private hosted URL/OBS async subset for future review and deployment. It does not replace this Python package and is not deployed or connected. Mobile chat attachments are not automatically accessible to that adapter. See the [transport/runtime/feature matrix](docs/portability.md).
+
 This uses the official **NAVER Cloud CLOVA Speech API**, not CLOVA Note browser endpoints. A CLOVA Note/web subscription does **not** supply the Invoke URL and secret needed here; do not assume it includes API usage. Obtain a separate Speech domain and review its billing. This server requires no broad NAVER Cloud account access key. It is an independent community project, not an official NAVER product.
 
 ## Install locally

@@ -22,3 +22,14 @@ jobs:
       - run: uv run pytest -q
       - run: uv run python scripts/check_secrets.py
       - run: uv build
+  cloud-adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm --prefix cloud/sites run check
+      - run: npm --prefix cloud/sites test
+      - run: npm --prefix cloud/sites run build
+      - run: npm --prefix cloud/sites run validate

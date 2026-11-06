@@ -4,6 +4,8 @@
 
 NAVER Cloud의 여러 서비스를 독립 모듈로 확장하기 위한 로컬 MCP 서버입니다. **현재 구현된 기능은 CLOVA Speech 장문 전사뿐입니다.** Object Storage 관리, 계정/권한 조회, 비용/사용량 조회는 향후 모듈이며, 현재 도구로 제공하지 않습니다. 검증되지 않은 범용 API 실행 기능은 없습니다.
 
+범용 Python 코어는 Dot/OpenAI 구독이나 Sites/Cloudflare 계정에 종속되지 않으며, 호환되는 다른 MCP 클라이언트에서도 사용할 수 있습니다. 향후 Mac 실행 여부와 독립된 사용을 위해 선택 사항인 [Sites 클라우드 어댑터 소스](cloud/sites/README.ko.md)를 별도로 준비했습니다. 아직 배포하거나 연결하지 않았으며, URL/OBS 비동기 입력만 지원하는 준비 단계입니다. 휴대폰 채팅의 첨부 파일이 자동으로 해당 어댑터에 전달되지는 않습니다. [전송 방식·런타임·기능 비교표와 계약 테스트](docs/portability.md)를 참조하세요.
+
 공식 **NAVER Cloud CLOVA Speech API**를 사용합니다. CLOVA Note 웹 로그인이나 비공개 브라우저 API를 사용하지 않습니다. 기존 CLOVA Note/웹 구독만으로 이 API를 사용할 수 있다고 가정하면 안 됩니다. 별도의 Speech 도메인 Invoke URL과 Secret, API 사용 과금 확인이 필요합니다. 광범위한 Ncloud 계정 Access Key는 필요하지 않습니다. NAVER 공식 제품이 아닌 독립 커뮤니티 프로젝트입니다.
 
 ## 설치와 연결
