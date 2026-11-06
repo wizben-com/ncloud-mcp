@@ -22,6 +22,8 @@ MCP 호스트에 실행 파일의 절대 경로를 등록합니다.
 {"mcpServers":{"ncloud":{"command":"/absolute/path/ncloud-mcp/.venv/bin/ncloud-mcp","args":[]}}}
 ```
 
+먼저 [도메인 생성 안내](https://guide.ncloud-docs.com/docs/clovaspeech-domain)에 따라 Object Storage 버킷을 준비하고 CLOVA Speech 도메인을 생성해야 합니다. 이 도메인 준비 요건은 동기 파일/URL 입력에도 적용됩니다. 다만 해당 입력 방식은 녹음 파일을 버킷에 미리 업로드하거나 이 MCP에 Object Storage 자격증명을 전달할 필요가 없습니다.
+
 `.env.example`은 변수 안내용이며 자동으로 읽지 않습니다. 호스트의 안전한 환경 설정으로 전달하세요. 키를 채팅에 붙여넣거나 Git에 저장하지 마세요.
 
 - `NCLOUD_SPEECH_ENABLED=true`: Speech 도구 활성화. 기본값은 비활성화입니다.
@@ -43,7 +45,7 @@ MCP 호스트에 실행 파일의 절대 경로를 등록합니다.
 
 `source`는 `file`, `url`, `object_storage` 중 하나입니다. 객체는 도메인에 설정한 인식 대상 저장소를 기준으로 `dataKey`를 지정합니다. 언어는 `ko-KR`, `en-US`, `enko`, `ja`, `zh-cn`, `zh-tw`를 받으며 도메인 지원 여부에 따라 달라질 수 있습니다. 결과에는 상태, 작업 토큰, 전체 텍스트, 밀리초 단위 구간/단어 타임코드와 화자 라벨이 있습니다.
 
-파일/URL **동기 전사에는 Object Storage가 필수가 아닙니다.** 현재 비동기 구현은 `completion="async"`, `result_to_obs=true`만 지원합니다. 도메인의 결과 저장소와 권한을 사전에 설정해야 하며 별도 저장 비용/보관 정책도 확인해야 합니다. 콜백 없는 단순 제출 후 조회만으로 비동기를 시작하지 않습니다. `SUCCEEDED`는 접수 상태입니다. 반환된 토큰을 보관하고 `clova_speech_job_status`에 `{"token":"<returned-token>"}`를 전달해 한 번씩 조회하세요. 자동 재시도나 자동 반복 조회는 없습니다.
+파일/URL **동기 전사에는 입력 파일의 사전 업로드나 MCP용 Object Storage 자격증명이 필요하지 않지만**, 도메인 생성에 필요한 버킷 준비 요건은 그대로 적용됩니다. 현재 비동기 구현은 `completion="async"`, `result_to_obs=true`만 지원하며 **전사 결과를 도메인에 설정한 Object Storage에 저장**합니다. 도메인의 결과 저장소와 권한을 사전에 설정해야 하며 별도 저장 비용/보관 정책도 확인해야 합니다. 콜백 없는 단순 제출 후 조회만으로 비동기를 시작하지 않습니다. `SUCCEEDED`는 접수 상태입니다. 반환된 토큰을 보관하고 `clova_speech_job_status`에 `{"token":"<returned-token>"}`를 전달해 한 번씩 조회하세요. 비동기 추적 토큰이 없거나 유효하지 않으면 결과 불명/추적 불가 오류를 반환합니다. 이미 유료 작업이 접수되었을 수 있으므로 자동으로 재제출하지 마세요. 자동 재시도나 자동 반복 조회는 없습니다.
 
 로컬 업로드 기본 제한은 25 MiB이며 최대 250 MiB까지 설정할 수 있습니다. API의 파일/길이 제한과 근거는 [API 문서](docs/api.md)에 정리했습니다. URL/객체의 용량과 재생 길이는 서버가 사전 확인하지 않으며 공급자가 검증합니다. URL의 리디렉션을 포함해 운영자가 신뢰할 수 있는 원본만 허용하세요. 공급자의 실제 다운로드 목적지를 이 프로세스가 통제할 수는 없습니다.
 

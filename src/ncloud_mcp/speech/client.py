@@ -16,7 +16,7 @@ from ncloud_mcp.speech.sources import read_media, validate_object_key, validate_
 TOKEN = re.compile(r"[A-Za-z0-9_-]{1,256}")
 
 
-def normalize(data: Any) -> Transcript:
+def normalize(data: Any, *, require_token: bool = False) -> Transcript:
     """Select known public fields, never return raw params/messages/error bodies."""
     try:
         if not isinstance(data, dict):
@@ -25,7 +25,14 @@ def normalize(data: Any) -> Transcript:
         if status not in {"SUCCEEDED", "WAITING", "PROCESSING", "FAILED", "COMPLETED", "TIMEOUT"}:
             raise ValueError
         token = data.get("token")
-        if token is not None and (not isinstance(token, str) or not TOKEN.fullmatch(token)):
+        valid_token = isinstance(token, str) and TOKEN.fullmatch(token) is not None
+        if (require_token or status == "SUCCEEDED") and not valid_token:
+            raise SafeError(
+                "CLOVA Speech submission outcome is unknown or untrackable: "
+                "tracking token missing or invalid. NAVER may have accepted a billable job. "
+                "Do not automatically resubmit."
+            )
+        if token is not None and not valid_token:
             raise ValueError
         segments = []
         for item in data.get("segments", []):
@@ -60,7 +67,9 @@ class SpeechClient:
         self._lock = asyncio.Lock()
         self._submission_lock = asyncio.Lock()
 
-    async def _request(self, method: str, endpoint: str, **kwargs: Any) -> Transcript:
+    async def _request(
+        self, method: str, endpoint: str, *, require_token: bool = False, **kwargs: Any
+    ) -> Transcript:
         self.config.require_ready()
         # Bound both concurrency and wall time, including waiting for another request.
         try:
@@ -89,7 +98,7 @@ class SpeechClient:
                         body.extend(chunk)
                         if len(body) > self.config.max_response_bytes:
                             raise SafeError("CLOVA Speech response exceeded the configured limit.")
-                    return normalize(json.loads(body))
+                    return normalize(json.loads(body), require_token=require_token)
         except (TimeoutError, httpx.TimeoutException):
             raise SafeError(
                 "CLOVA Speech timed out; submission outcome may be unknown. "
@@ -132,6 +141,7 @@ class SpeechClient:
             return await self._request(
                 "POST",
                 "/recognizer/upload",
+                require_token=request.completion == "async",
                 files={
                     "media": (f"media.{suffix}", media, "application/octet-stream"),
                     "params": (None, json.dumps(params), "application/json"),
@@ -145,7 +155,9 @@ class SpeechClient:
             validate_object_key(request.location, self.config)
             params["dataKey"] = request.location
             endpoint = "/recognizer/object-storage"
-        return await self._request("POST", endpoint, json=params)
+        return await self._request(
+            "POST", endpoint, require_token=request.completion == "async", json=params
+        )
 
     async def job_status(self, token: str) -> Transcript:
         if not TOKEN.fullmatch(token):

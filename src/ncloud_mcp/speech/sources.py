@@ -36,11 +36,19 @@ def read_media(location: str, config: SpeechConfig) -> bytes:
             raise ValueError
         root = next(r for r in config.local_roots if path.is_relative_to(r))
         parts = path.relative_to(root).parts
-        if not parts or not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
+        if (
+            not root.is_absolute()
+            or ".." in root.parts
+            or not parts
+            or not hasattr(os, "O_NOFOLLOW")
+            or os.open not in os.supports_dir_fd
+        ):
             raise ValueError
-        fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        # Start at the filesystem anchor: opening root by its full path would follow
+        # replaced symlinks in any of its parent components despite O_NOFOLLOW.
+        fd = os.open(root.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
-            for part in parts[:-1]:
+            for part in (*root.parts[1:], *parts[:-1]):
                 next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
                 os.close(fd)
                 fd = next_fd

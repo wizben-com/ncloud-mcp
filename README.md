@@ -43,6 +43,8 @@ Example MCP host configuration (replace the executable path; inherit private env
 }
 ```
 
+Prepare an Object Storage bucket before creating the CLOVA Speech domain, as required by the [domain setup guide](https://guide.ncloud-docs.com/docs/clovaspeech-domain). This domain prerequisite applies even when using synchronous local-file or URL input. Those input methods do not require pre-uploading the recording into the bucket or providing Object Storage credentials to this MCP.
+
 Set `NCLOUD_SPEECH_INVOKE_URL` to the domain's base Invoke URL (without `/recognizer/...`) and `NCLOUD_SPEECH_SECRET` to its secret. Supported base URLs are deliberately restricted to the official `https://clovaspeech-gw.ncloud.com/external/v1/<domain-id>/<invoke-key>` format; custom proxies are unsupported. For files, explicitly set `NCLOUD_SPEECH_LOCAL_ROOTS` to dedicated recording directories, separated with the OS path separator. Do not allow your home, repository, or credentials directory.
 
 ## Tools
@@ -63,7 +65,7 @@ Sources: `file` (absolute allowed path), `url` (trusted, allowlisted public HTTP
 
 Languages: `ko-KR`, `en-US`, `enko`, `ja`, `zh-cn`, `zh-tw`; availability can depend on domain. Supported file extensions follow the official long-form API. Default local upload cap: **25 MiB**, configurable up to **250 MiB**, deliberately below the provider limit. Recognition duration is not inferred from file extensions or bytes. See [verified API behavior](docs/api.md) for provider limits and references.
 
-File/URL **sync needs no Object Storage**. Async in this release uses **only `resultToObs=true`**, which persists results to the Speech domain's configured Object Storage. It requires `NCLOUD_SPEECH_ALLOW_ASYNC_OBS=true`, `completion="async"`, and `result_to_obs=true`. Configure the domain's result storage and permissions yourself before use. Arbitrary callbacks are intentionally unsupported. Acceptance (`SUCCEEDED`) is not a completed transcript; retain the returned token privately and call `clova_speech_job_status` with `{"token":"<returned-token>"}`. There is no automatic polling, cancellation, or invented poll-only submission mode.
+File/URL **sync requires no input pre-upload or MCP Object Storage credentials**, while the domain's bucket prerequisite still applies. Async in this release uses **only `resultToObs=true`**, which persists the transcript in the Speech domain's configured Object Storage. It requires `NCLOUD_SPEECH_ALLOW_ASYNC_OBS=true`, `completion="async"`, and `result_to_obs=true`. Configure the domain's result storage and permissions yourself before use. Arbitrary callbacks are intentionally unsupported. Acceptance (`SUCCEEDED`) is not a completed transcript; retain the returned token privately and call `clova_speech_job_status` with `{"token":"<returned-token>"}`. Missing or invalid async tracking tokens produce a sanitized unknown/untrackable-outcome error: NAVER may already have accepted a billable job, so do not automatically resubmit. There is no automatic polling, cancellation, or invented poll-only submission mode.
 
 Results contain `status`, optional job `token`, `text`, and `segments` with `start_ms`, `end_ms`, text, optional speaker label/confidence, and word timing. Job results without full text reconstruct it from segments. Upstream messages, domain metadata, and raw responses are omitted. A `FAILED`/`TIMEOUT` job is returned as a terminal status; upstream error codes produce sanitized tool errors. Transcript text is untrusted data, never instructions to execute.
 

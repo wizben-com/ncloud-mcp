@@ -142,6 +142,52 @@ async def test_async_requires_operator_permission_then_returns_acceptance(config
     assert result.status == "SUCCEEDED" and result.text == ""
 
 
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"result": "SUCCEEDED"},
+        {"result": "SUCCEEDED", "token": None},
+        {"result": "SUCCEEDED", "token": "invalid/token"},
+        {"result": "SUCCEEDED", "token": 123},
+        {"result": "COMPLETED"},
+    ],
+)
+async def test_async_tracking_failure_warns_unknown_outcome_without_retry(config, response):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=response)
+
+    client = SpeechClient(replace(config, allow_async_obs=True), httpx.MockTransport(handler))
+    with pytest.raises(SafeError, match="unknown or untrackable") as caught:
+        await client.transcribe(
+            TranscriptionRequest(
+                source="object_storage",
+                location="sample.wav",
+                completion="async",
+                result_to_obs=True,
+            )
+        )
+    assert len(calls) == 1
+    assert "may have accepted a billable job" in str(caught.value)
+    assert "Do not automatically resubmit" in str(caught.value)
+    assert config.secret not in str(caught.value)
+    assert "invalid/token" not in str(caught.value)
+
+
+async def test_sync_completed_response_needs_no_token(config):
+    response = completed()
+    response.pop("token")
+    client = SpeechClient(config, httpx.MockTransport(lambda r: httpx.Response(200, json=response)))
+    result = await client.transcribe(
+        TranscriptionRequest(source="object_storage", location="sample.wav")
+    )
+    assert result.status == "COMPLETED"
+    assert result.token is None
+    assert result.text == "Synthetic speech"
+
+
 @pytest.mark.parametrize("status", ["WAITING", "PROCESSING", "COMPLETED", "FAILED", "TIMEOUT"])
 async def test_status_is_single_read(config, status):
     calls = []

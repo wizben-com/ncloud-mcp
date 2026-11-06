@@ -28,18 +28,23 @@ async def main():
             await session.initialize()
             health = await session.call_tool("ncloud_health", {})
             print(health.structuredContent)
-            result = await session.call_tool("clova_speech_transcribe", {
-                "request": {
-                    "source": "file",
-                    "location": "/dedicated/audio/sample.wav",
-                    "language": "ko-KR",
-                    "diarization": True,
-                    "completion": "sync",
-                    "result_to_obs": False,
-                }
-            })
+            result = await session.call_tool(
+                "clova_speech_transcribe",
+                {
+                    "request": {
+                        "source": "file",
+                        "location": "/dedicated/audio/sample.wav",
+                        "language": "ko-KR",
+                        "diarization": True,
+                        "completion": "sync",
+                        "result_to_obs": False,
+                    }
+                },
+            )
             if result.isError:
-                raise RuntimeError("Transcription failed; inspect the sanitized MCP error privately")
+                raise RuntimeError(
+                    "Transcription failed; inspect the sanitized MCP error privately"
+                )
             # Keep transcripts out of shared logs; consume result.structuredContent privately.
 
 

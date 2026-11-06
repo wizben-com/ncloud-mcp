@@ -24,6 +24,7 @@ def test_file_read_and_limits(tmp_path):
 def test_symlinks_traversal_outside_and_directory_denied(tmp_path):
     allowed = tmp_path / "allowed"
     allowed.mkdir()
+    (allowed / "directory.wav").mkdir()
     outside = tmp_path / "outside.wav"
     outside.write_bytes(b"synthetic")
     link = allowed / "linked.wav"
@@ -42,6 +43,25 @@ def test_symlinks_traversal_outside_and_directory_denied(tmp_path):
     ):
         with pytest.raises(SafeError):
             read_media(str(path), config)
+
+
+def test_configured_root_parent_symlink_replacement_is_denied(tmp_path):
+    parent = tmp_path / "configured-parent"
+    root = parent / "recordings"
+    root.mkdir(parents=True)
+    media = root / "synthetic.wav"
+    media.write_bytes(b"authorized synthetic audio")
+    config = SpeechConfig(local_roots=(root.resolve(),))
+    assert read_media(str(media), config) == b"authorized synthetic audio"
+
+    outside = tmp_path / "outside"
+    (outside / "recordings").mkdir(parents=True)
+    (outside / "recordings" / media.name).write_bytes(b"unauthorized synthetic audio")
+    parent.rename(tmp_path / "original-parent")
+    parent.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(SafeError, match="Local source denied"):
+        read_media(str(media), config)
 
 
 @pytest.mark.parametrize(
