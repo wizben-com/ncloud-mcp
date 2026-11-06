@@ -1,0 +1,7 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ncloud-mcp",
+  "version": "0.1.0",
+  "description": "Local NAVER Cloud MCP tools, starting with CLOVA Speech. Requires a separately installed ncloud-mcp executable and private service configuration.",
+  "author": {"name": "ncloud-mcp contributors"}
+}
