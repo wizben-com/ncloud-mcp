@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import test from "node:test";
+import test, { afterEach } from "node:test";
+import { SqliteD1, seedAccepted } from "./sqlite-d1.mjs";
 import worker, { createWorker, configuration, submission, normalize, LIMITS } from "../worker/index.js";
 
 const env = {
@@ -11,8 +12,11 @@ const env = {
   NCLOUD_SPEECH_ALLOW_OBJECT_STORAGE: "true",
   NCLOUD_SPEECH_ALLOW_ASYNC_OBS: "true",
 };
-const args = { source: "url", location: "https://media.example.com/synthetic.wav", result_to_obs: true };
+const args = { request_id: "request-synthetic-1", source: "url", location: "https://media.example.com/synthetic.wav", result_to_obs: true };
 const config = configuration(env);
+const databases = [];
+afterEach(() => { for (const db of databases.splice(0)) db.close(); });
+function bindings() { const DB = new SqliteD1(); databases.push(DB); return { ...env, DB }; }
 const accepted = { result: "SUCCEEDED", token: "synthetic-token" };
 const completed = { result: "COMPLETED", token: "synthetic-token", message: "PRIVATE_PROVIDER_BODY",
   params: { account: "PRIVATE_PROVIDER_BODY" }, segments: [{ start: 0, end: 1000,
@@ -31,8 +35,8 @@ function request(method, params, { identity = true, ...init } = {}) {
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, ...(params ? { params } : {}) }), ...init,
   });
 }
-async function call(server, name, arguments_ = {}, bindings = env, options = {}) {
-  const response = await server.fetch(request("tools/call", { name, arguments: arguments_ }, options), bindings);
+async function call(server, name, arguments_ = {}, bindings_ = null, options = {}) {
+  const response = await server.fetch(request("tools/call", { name, arguments: arguments_ }, options), bindings_ ?? bindings());
   return { response, rpc: await response.json() };
 }
 function safeFailure(rpc) {
@@ -96,8 +100,10 @@ test("URL submission sends verified async fields exactly once; does not forward 
   } });
   const { rpc } = await call(server, "clova_speech_submit_async", args);
   assert.equal(calls, 1);
-  assert.equal(rpc.result.structuredContent.status, "SUCCEEDED");
-  assert.equal(rpc.result.structuredContent.text, "");
+  assert.equal(rpc.result.structuredContent.provider_state, "SUCCEEDED");
+  assert.equal(rpc.result.structuredContent.submission_state, "ACCEPTED");
+  assert.ok(!JSON.stringify(rpc).includes("synthetic-token"));
+  assert.equal(rpc.result.structuredContent.text, undefined);
   assert.equal(rpc.result.structuredContent.storage.result_to_obs_requested, true);
   assert.match(rpc.result.structuredContent.storage.notice, /persistence/);
 });
@@ -113,7 +119,7 @@ test("Object Storage input is domain-relative; no S3 credentials or bucket opera
     assert.equal(body.diarization.enable, false);
     return json(accepted);
   } });
-  const { rpc } = await call(server, "clova_speech_submit_async", { source: "object_storage",
+  const { rpc } = await call(server, "clova_speech_submit_async", { request_id: "request-synthetic-1", source: "object_storage",
     location: "/synthetic.wav", language: "en-US", diarization: false, result_to_obs: true });
   assert.equal(rpc.result.isError, false);
   assert.equal(calls, 1);
@@ -158,6 +164,8 @@ test("disabled/unconfigured/invalid operator configuration fails closed without 
 test("one-shot status preserves distinct states and normalized word timing", async () => {
   for (const status of ["WAITING", "PROCESSING", "FAILED", "TIMEOUT", "COMPLETED"]) {
     let calls = 0;
+    const settings = bindings();
+    const job_id = await seedAccepted(settings);
     const server = createWorker({ fetchImpl: async (url, options) => {
       calls++;
       assert.ok(url.endsWith("/recognizer/synthetic-token"));
@@ -165,9 +173,10 @@ test("one-shot status preserves distinct states and normalized word timing", asy
       assert.equal(options.body, undefined);
       return json({ ...completed, result: status });
     } });
-    const { rpc } = await call(server, "clova_speech_job_status", { token: "synthetic-token" });
+    const { rpc } = await call(server, "clova_speech_job_status", { job_id }, settings);
     assert.equal(calls, 1);
-    assert.equal(rpc.result.structuredContent.status, status);
+    assert.equal(rpc.result.structuredContent.provider_state, status);
+    assert.ok(!JSON.stringify(rpc).includes("synthetic-token"));
     assert.equal(rpc.result.structuredContent.segments[0].words[0].end_ms, 1000);
     assert.equal(rpc.result.structuredContent.text, "Synthetic speech");
     assert.ok(!JSON.stringify(rpc).includes("PRIVATE_PROVIDER_BODY"));
@@ -190,7 +199,7 @@ test("missing/invalid async acceptance tracking is uncertain and never retried",
 
 test("unsafe status tokens fail without requests; malformed results are sanitized", async () => {
   for (const token of ["../bad", "x?url=PRIVATE_PROVIDER_BODY", "", "x".repeat(257), "synthetic-token\n"]) {
-    safeFailure((await call(createWorker({ fetchImpl: noNetwork }), "clova_speech_job_status", { token })).rpc);
+    safeFailure((await call(createWorker({ fetchImpl: noNetwork }), "clova_speech_job_status", { job_id: token })).rpc);
   }
   for (const value of [null, { result: "ERROR", message: "PRIVATE_PROVIDER_BODY" },
     { result: "COMPLETED", segments: [{ start: 10, end: 0, text: "x" }] },
@@ -270,9 +279,9 @@ test("only POST JSON /mcp is exposed; no secret intake, uploads, OAuth or local 
   assert.equal(typeof worker.fetch, "function");
 });
 
-test("source manifest is MCP-only without project identity or persistence bindings", async () => {
+test("source manifest is MCP-only without project identity and with the required logical D1 binding", async () => {
   const manifest = JSON.parse(await readFile(new URL("../.openai/hosting.json", import.meta.url)));
-  assert.deepEqual(manifest, { d1: null, r2: null, capabilities: ["mcp"] });
+  assert.deepEqual(manifest, { d1: "DB", r2: null, capabilities: ["mcp"] });
 });
 
 test("normalization matches the same provider-only contract used by Python", async () => {

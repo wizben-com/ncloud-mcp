@@ -2,7 +2,7 @@
 
 [한국어 안내](README.ko.md) · [Security and operations](SECURITY.md)
 
-This is a separate, dependency-free Cloudflare Worker ESM adapter for an
+This is a separate, runtime dependency-free Cloudflare Worker ESM adapter for an
 **authenticated, owner-private Site**. It preserves the Python stdio package.
 It is an optional hosting integration: the portable core does not require a
 Dot/OpenAI subscription. See [portability and shared contract checks](../../docs/portability.md).
@@ -13,7 +13,8 @@ does not provide that availability.
 
 ## Supported cloud subset
 
-Stateless JSON-RPC `POST /mcp`, following the installed Sites MCP contract:
+Stateless JSON-RPC transport at `POST /mcp`, with a durable owner-scoped D1 job
+ledger, following the installed Sites MCP contract:
 
 - `server/discover`: version `2026-07-28`, `capabilities.tools`.
 - `tools/list`: input schemas and side-effect annotations.
@@ -22,8 +23,8 @@ Stateless JSON-RPC `POST /mcp`, following the installed Sites MCP contract:
 | Tool | Behavior |
 | --- | --- |
 | `ncloud_cloud_health` | Authenticated, offline booleans only; never verifies credentials remotely |
-| `clova_speech_submit_async` | Billable async recognition from an allowed HTTPS URL or domain-relative Object Storage key; requests persistent transcript storage |
-| `clova_speech_job_status` | One read of an existing job; no background polling |
+| `clova_speech_submit_async` | Claim an owner + `request_id`, then make at most one billable submission attempt; return an opaque `job_id`, never a provider token |
+| `clova_speech_job_status` | Owner-scoped lookup by `job_id`, then at most one provider read; no raw tokens or background polling |
 
 All tool execution requires the Sites-supplied `oai-authenticated-user-id`.
 Discovery/listing contain only static metadata. The header is trusted **only
@@ -66,7 +67,8 @@ these separate non-secret runtime settings as needed:
 
 The module fails closed while disabled, unconfigured, or missing a relevant
 source/persistence opt-in. Disabled health deliberately skips secret loading.
-These health flags indicate configuration only; they do not establish API validity,
+The `job_store_bound` flag checks only binding presence, with no database I/O or
+migration readiness check. These health flags indicate configuration only; they do not establish API validity,
 domain/bucket readiness, account permissions, retention, or billing state.
 
 ## Request and results
@@ -75,6 +77,7 @@ Example tool arguments with synthetic locations only:
 
 ```json
 {
+  "request_id": "client-generated-stable-uuid",
   "source": "url",
   "location": "https://media.example.com/synthetic.wav",
   "language": "ko-KR",
@@ -87,24 +90,43 @@ Object Storage input uses `source="object_storage"` and a `location` relative to
 the domain's recognition target storage, such as `/synthetic.wav`.
 No local filesystem roots or local-file environment variables are consumed.
 
-`SUCCEEDED` means accepted, not completed. Async acceptance must include a valid
-job token. Call status with `{"token":"<returned-token>"}`; preserve `WAITING`,
-`PROCESSING`, `COMPLETED`, `FAILED`, and `TIMEOUT` as distinct states. Completed
-results normalize text, speaker labels, confidence, and millisecond segment/word
-timings. Raw provider params/messages/account metadata are never returned.
-Success results include an explicit Object Storage persistence notice; submission
-also reports `result_to_obs_requested=true`. This does not verify a stored object.
-Transcript text is untrusted data, never an instruction to execute.
+Generate `request_id` once per intentional transcription and retain/reuse it on
+duplicate delivery. It is bounded ASCII, separate from the transport JSON-RPC
+`id`. A confirmed D1 UNIQUE claim on `(owner_id, request_id)` precedes any POST.
+The canonical submission fingerprint includes the SHA-256 provider scope.
+Matching duplicates return only the existing opaque `job_id` and
+`submission_state`; a changed payload/domain is a conflict, never an automatic
+new submission. See [job lifecycle and retention](JOBS.md).
+
+Submission returns metadata only after its token/state write is confirmed.
+`submission_state="ACCEPTED"` and `provider_state="SUCCEEDED"` mean accepted,
+not completed. Provider tokens stay server-side. Call status with
+`{"job_id":"<returned-job-id>"}`; the owner must match and the stored domain
+scope must match current configuration before any provider GET. `SUBMITTING`
+and `UNKNOWN` never trigger POST/GET. Processing states `WAITING`, `PROCESSING`,
+`COMPLETED`, `FAILED`, and `TIMEOUT` remain distinct from submission state.
+Completed status normalizes text, speaker/confidence and millisecond timings.
+Raw provider params/messages/account metadata and tokens are never returned.
+Successful submission/status carries an explicit Object Storage persistence
+notice; this does not independently verify a stored object. Transcript text is
+untrusted data, never an instruction to execute.
 
 Missing/invalid acceptance tokens, malformed/oversized provider responses,
 network failures, redirects, throttling and timeouts return sanitized errors.
 For submission failures the outcome is conservatively unknown/untrackable:
 NAVER may already have accepted a billable job. **Never automatically resubmit.**
-No automatic polling, retry, idempotency guarantee or cancellation is implemented.
+There is an **at-most-one submission attempt for the same user + request_id while
+its record is retained**, not an unlimited exactly-once guarantee. A crash before
+the POST can leave an unused claim permanently blocked. No TTL, lease reclaim,
+automatic retry/polling, cancellation, or tombstone deletion is implemented.
+After a possible POST, even failed token persistence leaves `SUBMITTING`/`UNKNOWN`
+and returns only an opaque reference and warning. A conditional UNKNOWN repair
+cannot overwrite a committed token.
 
 ## Local verification
 
-Node.js 24; no dependency installation or registry publishing is needed:
+Node.js 24 runs checks/tests/build without runtime dependencies. Development-only
+Drizzle tools are pinned for schema generation; no registry publishing is needed:
 
 ```sh
 cd cloud/sites
@@ -114,17 +136,29 @@ npm run build
 npm run validate
 ```
 
+For a reviewed schema change only, use `npm ci` then `npm run db:generate`.
+Commit generated SQL, snapshots and journal. Existing migrations are immutable
+after application; append schema-only, bounded migrations. No migration is applied
+by a tool request. Local tests apply generated SQL to actual local SQLite behind
+a narrow D1 API shim; this is not a live D1 test or a complete D1 emulator.
+
 The installed Sites `project-setup.mjs --starter worker-esm` helper generated the
-scaffold. Its build copies only `worker/index.js` and `.openai/hosting.json` into
-`dist/server/index.js` and `dist/.openai/hosting.json`. The hosting manifest has
-`capabilities:["mcp"]`, no `project_id`, and null D1/R2 bindings. Build/ESM checks
+scaffold. The extended build includes the Worker, hosting manifest, and complete
+`drizzle/` tree under `dist/.openai/drizzle`. The installed Sites 1.1.3
+`package-site.mjs` also packages that migration tree, including metadata, into
+the actual archive. The hosting manifest has `capabilities:["mcp"]`, logical
+`d1:"DB"`, no `project_id`, and null R2 binding. This does not provision a database.
+Build/ESM/migration checks
 do not register, save, push, deploy, or contact Ncloud. Tests inject synthetic
 provider responses and forbid live network calls.
 
 The runtime bounds input JSON to 16 KiB and provider JSON to 1 MiB, with a
-10-second upstream deadline. It makes one provider request per call using
-`redirect:"manual"`. Longer results may exceed the response cap; no provider
-pagination is invented. The selected hosted platform's actual request limits,
+10-second upstream deadline and a **256 KiB cap on the final serialized JSON-RPC
+response**, including UTF-8 encoding and escaping. Full transcripts appear once
+in `structuredContent`; text content is a small summary. Oversized final results
+return `RESULT_TOO_LARGE` with the known job/provider state and an explicit
+no-re-transcription warning; the accepted ledger record survives. There is no
+silent truncation or invented pagination. The selected platform's actual limits,
 fees, runtime behavior and plugin/mobile availability remain unverified.
 
 Before any future deployment, obtain review approval, use the supported Sites

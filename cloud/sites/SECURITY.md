@@ -35,18 +35,32 @@ are present. User audio is never fetched through the Worker or saved in D1/R2.
 Async explicitly requests transcript persistence in the domain's Object Storage;
 the operator owns its retention/access policy and storage costs.
 
-Request bodies are capped at 16 KiB and response bodies at 1 MiB, with incremental
+Request bodies are capped at 16 KiB and provider bodies at 1 MiB, with incremental
 byte counting even without Content-Length. Provider operations have a 10-second
-deadline including response-body reading. One call performs one upstream request;
-there are no retries, redirects or pollers. Private platform access does not
-provide deduplication or a billing budget. Repeated authorized tool calls can
-create repeated charges. Configure appropriate operational budgets separately
-before real use; no budget or rate-limit service is provisioned here.
+deadline including body reading. The FINAL JSON-RPC response is capped at 256 KiB
+after serialization, escaping and UTF-8 encoding. Full results occur only once in
+structuredContent; text content is a short summary. Oversized normalized output
+returns explicit RESULT_TOO_LARGE with the known job/provider state and no
+re-transcription guidance, never silent truncation. Existing accepted metadata
+survives result rendering failure.
 
-Acceptance requires a valid tracking token. Submission failures conservatively
-report unknown/untrackable outcomes and prohibit automatic resubmission. Tokens
-are necessary private references in successful results and inputs, but never
-appear in error messages. Error responses do not expose upstream messages,
+The D1 UNIQUE owner/request_id claim precedes every possible billable POST.
+Duplicates with the same canonical hash return only existing job reference/state;
+different payloads or domain scopes conflict. Failed/uncertain claims make no
+provider call. SUBMITTING/UNKNOWN tombstones have no automatic expiry, retry,
+lease reacquisition or deletion. The precise protection is at-most-one attempt
+for the same owner/key while its record remains, not unlimited exactly-once.
+New request IDs, changed identities or deleted/lost records are outside that
+guarantee; there is no billing budget or rate-limit service provisioned here.
+
+Acceptance requires a valid tracking token, saved and confirmed before ACCEPTED
+is returned. Tokens exist only server-side; external input/output uses opaque
+job_id. Every status lookup is bound to owner_id before using a token, with the
+same JOB_NOT_FOUND for missing/another-owner jobs and zero provider calls. A SHA-256
+domain scope check prevents sending old tokens to a changed Invoke URL. Submission
+failures leave durable tombstones and prohibit automatic resubmission. UNKNOWN
+repair requires SUBMITTING AND a null token, never overwriting a committed save.
+Error responses do not expose upstream messages,
 bodies, source URLs, gateway URLs, keys, tokens or account information. No console
 logging is implemented. Do not enable tracing that records sensitive outgoing
 URLs/headers/bodies or tool arguments. Host history, platform telemetry, provider

@@ -14,7 +14,8 @@ is stdio; it does not implement a general hosted HTTP endpoint.
 | Identity boundary | Trusted local stdio host and OS user | Owner-private Sites access plus dispatch identity header |
 | Input | Scoped local files, allowed HTTPS URLs, domain-relative OBS keys | Allowed HTTPS URLs or domain-relative OBS keys only |
 | Recognition | Sync or opted-in async | Opted-in async only |
-| Status | One-shot job status | One-shot job status |
+| Status | One-shot status by provider token | Owner-scoped one-shot status by opaque job ID; provider tokens stay server-side |
+| Replay/job storage | No durable replay ledger in stdio core | Optional adapter D1 ledger: owner + request_id UNIQUE claim, tombstones, domain scope hashes |
 | Async result storage | Explicit `resultToObs=true` and operator opt-in | Same; persistence disclosed in tool descriptions and results |
 | Configuration health | Offline flags and limits | Authenticated offline booleans only |
 | Speech credentials | Domain Invoke URL and Secret Key | Same provider credentials, later configured as hosted Secrets |
@@ -55,3 +56,7 @@ remain under `cloud/sites`. Adding the optional adapter has not changed the
 Python package dependencies, configuration, implementation, or entrypoint.
 Running only the Python package needs no Node.js installation. Developing the
 optional adapter uses Node.js 24 with no external runtime dependencies.
+Its D1 schema/migrations and pinned development-only Drizzle tools also remain
+under `cloud/sites`. They do not add a D1, Node, Drizzle or Sites requirement to
+the Python package. Transport-level statelessness does not mean the optional
+adapter lacks durable job metadata; its replay and ownership boundary requires D1.

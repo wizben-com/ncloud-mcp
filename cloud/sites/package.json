@@ -4,8 +4,11 @@
   "type": "module",
   "scripts": {
     "check": "node --check worker/index.js",
+    "db:generate": "drizzle-kit generate",
     "test": "node --test test/*.test.mjs",
     "build": "bash scripts/build.sh",
     "validate": "node scripts/validate-artifact.mjs"
-  }
+  },
+  "devDependencies": { "drizzle-kit": "0.31.10", "drizzle-orm": "0.45.2" },
+  "overrides": { "@esbuild-kit/core-utils": { "esbuild": "0.25.12" } }
 }
