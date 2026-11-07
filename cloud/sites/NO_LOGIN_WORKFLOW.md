@@ -44,7 +44,7 @@ Configuration, only after explicit authorization:
 - NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT=true: explicitly permit an empty prefix
   only for an authorized result bucket whose artifacts are stored at its root.
   Default false; enabling this does not weaken a configured nonempty prefix.
-- NCLOUD_SPEECH_RESULT_ACCESS_KEY and NCLOUD_SPEECH_RESULT_SECRET_KEY: Site Secrets
+- NCLOUD_ACCOUNT_ACCESS_KEY and NCLOUD_ACCOUNT_SECRET_KEY: Site Secrets
   for a separately approved read-only subaccount, not the main-account key.
 - Optional NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: verified actual object-key pattern
   under the prefix containing exactly one {token} and optionally one {filename}.
@@ -129,3 +129,8 @@ POST. It does not store the original filename. A verified {filename}_{token}.jso
 template enables direct retrieval without listing objects. Existing jobs have no
 backfilled filename; use their exact object key or a separately verified fixed
 filename template. Original request fingerprint/idempotency semantics are unchanged.
+
+The NCLOUD_ACCOUNT_* names identify an API credential pair, not a requirement to
+use the main account. Prefer the authorized subaccount. Names do not change IAM
+permissions. The old NCLOUD_SPEECH_RESULT_ACCESS_KEY / SECRET_KEY names are not
+read or used as fallback. NCLOUD_SPEECH_SECRET remains the separate domain secret.

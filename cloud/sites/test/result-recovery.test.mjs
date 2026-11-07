@@ -4,7 +4,7 @@ import {createWorker} from '../worker/index.js';
 import {SqliteD1,seedAccepted} from './sqlite-d1.mjs';
 globalThis.fetch=()=>{throw Error('No live network');};
 const env={NCLOUD_SPEECH_ENABLED:'true',NCLOUD_SPEECH_INVOKE_URL:'https://clovaspeech-gw.ncloud.com/external/v1/0000/SYNTHETIC',NCLOUD_SPEECH_SECRET:'SYNTHETIC_SECRET',NCLOUD_SPEECH_UPLOAD_URL_HOSTS:'media.example.com',NCLOUD_SPEECH_ALLOW_ASYNC_OBS:'true'};
-const storage={NCLOUD_SPEECH_RESULT_STORAGE_ENABLED:'true',NCLOUD_SPEECH_RESULT_BUCKET:'synthetic-results',NCLOUD_SPEECH_RESULT_PREFIX:'results/',NCLOUD_SPEECH_RESULT_ACCESS_KEY:'SYNTHETIC_ACCESS',NCLOUD_SPEECH_RESULT_SECRET_KEY:'SYNTHETIC_SECRET'};
+const storage={NCLOUD_SPEECH_RESULT_STORAGE_ENABLED:'true',NCLOUD_SPEECH_RESULT_BUCKET:'synthetic-results',NCLOUD_SPEECH_RESULT_PREFIX:'results/',NCLOUD_ACCOUNT_ACCESS_KEY:'SYNTHETIC_ACCESS',NCLOUD_ACCOUNT_SECRET_KEY:'SYNTHETIC_SECRET'};
 async function call(worker,bindings,name,args,owner='synthetic-owner'){
  return (await(await worker.fetch(new Request('https://example.com/mcp',{method:'POST',headers:{'content-type':'application/json','oai-authenticated-user-id':owner},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})}),bindings)).json()).result;
 }

@@ -9,12 +9,12 @@ verify actual Site audience; confirm owner-private access through the supported
 Sites workflow before any deployment. No owner account IDs or emails belong in
 source, health or test fixtures.
 
-All three tools require identity, including health. Static discovery/listing
+All four tools require identity, including health. Static discovery/listing
 exposes no configuration. The adapter implements no browser sessions, OAuth,
-service-bypass tokens, CORS access, uploads, settings API or secret intake.
-No credential grants or API-key creation are performed. The two domain values
-must later be entered privately as Sites runtime Secrets by the user. Broad
-account keys and S3 credentials are not used.
+service-bypass tokens, CORS access, incoming file-upload endpoints, settings API or secret intake.
+No credential grants or API-key creation are performed. Domain credentials and the separately authorized NCLOUD_ACCOUNT_* pair for
+result reads must be entered privately as Sites runtime Secrets. Prefer a
+least-privilege subaccount; never infer IAM scope from a variable name.
 
 Only controlled HTTPS origins with exact hostname allowlisting may be used.
 Credentials in URLs, non-443 ports, fragments, control characters, IP literals,
@@ -29,19 +29,25 @@ Treat signed media URLs as sensitive and prefer private domain-relative OBS
 input when suitable; do not expose a bucket as an upload workaround.
 
 No local files are read, even if local-file configuration is passed accidentally.
-Object keys are sent as `dataKey` only to the official domain gateway. No generic
-endpoint passthrough, S3 operations, public ACL changes or arbitrary callbacks
-are present. User audio is never fetched through the Worker or saved in D1/R2.
+Input object keys are sent as `dataKey` to the official domain gateway. The result
+reader performs signed GET requests to one configured bucket on the fixed Korea
+Object Storage endpoint, checks path scope and matches the owned provider token.
+No generic endpoint passthrough, listing, storage writes, public ACL changes or
+arbitrary callbacks are present. upload_url fetches up to 25 MiB from a separate
+exact host allowlist and relays multipart with no cookies or redirects. Audio is
+not saved in D1/R2. New uploads retain only an opaque provider filename in D1.
 Async explicitly requests transcript persistence in the domain's Object Storage;
 the operator owns its retention/access policy and storage costs.
 
-Request bodies are capped at 16 KiB and provider bodies at 1 MiB, with incremental
-byte counting even without Content-Length. Provider operations have a 10-second
-deadline including body reading. The FINAL JSON-RPC response is capped at 256 KiB
+Request bodies are capped at 16 KiB. Status bodies are configurable from 1 to
+16 MiB; stored JSON has a separate fixed 16 MiB bound, with incremental byte
+counting even without Content-Length. Ordinary provider operations have a
+10-second deadline including body reading; relayed upload has a 60-second bound. The FINAL JSON-RPC response is capped at 256 KiB
 after serialization, escaping and UTF-8 encoding. Full results occur only once in
 structuredContent; text content is a short summary. Oversized normalized output
-returns explicit RESULT_TOO_LARGE with the known job/provider state and no
-re-transcription guidance, never silent truncation. Existing accepted metadata
+returns explicit RESULT_TOO_LARGE with known job/provider state and a warning
+not to re-transcribe. Paginated retrieval bounds page payloads to 128 KiB and
+never silently truncates the overall result. Existing accepted metadata
 survives result rendering failure.
 
 The D1 UNIQUE owner/request_id claim precedes every possible billable POST.

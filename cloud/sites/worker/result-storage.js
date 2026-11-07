@@ -52,8 +52,8 @@ export function storageConfiguration(env = {}) {
     const bucket = env.NCLOUD_SPEECH_RESULT_BUCKET ?? "";
     const prefix = env.NCLOUD_SPEECH_RESULT_PREFIX ?? "";
     const keyTemplate = env.NCLOUD_SPEECH_RESULT_KEY_TEMPLATE ?? "";
-    const accessKey = env.NCLOUD_SPEECH_RESULT_ACCESS_KEY ?? "";
-    const secretKey = env.NCLOUD_SPEECH_RESULT_SECRET_KEY ?? "";
+    const accessKey = env.NCLOUD_ACCOUNT_ACCESS_KEY ?? "";
+    const secretKey = env.NCLOUD_ACCOUNT_SECRET_KEY ?? "";
     if ((bucket !== "" && !validBucket(bucket)) ||
         (prefix !== "" && !validPath(prefix, 512, true)) ||
         (accessKey !== "" && (!validCredential(accessKey) || /[,\/]/.test(accessKey))) ||

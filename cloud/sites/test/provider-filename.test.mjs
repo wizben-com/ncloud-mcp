@@ -9,7 +9,7 @@ const env = { NCLOUD_SPEECH_ENABLED: "true",
   NCLOUD_SPEECH_SECRET: "SYNTHETIC_SECRET", NCLOUD_SPEECH_UPLOAD_URL_HOSTS: "media.example.com",
   NCLOUD_SPEECH_ALLOW_ASYNC_OBS: "true", NCLOUD_SPEECH_RESULT_STORAGE_ENABLED: "true",
   NCLOUD_SPEECH_RESULT_BUCKET: "synthetic-results", NCLOUD_SPEECH_RESULT_PREFIX: "results/",
-  NCLOUD_SPEECH_RESULT_ACCESS_KEY: "SYNTHETIC_ACCESS", NCLOUD_SPEECH_RESULT_SECRET_KEY: "SYNTHETIC_SECRET",
+  NCLOUD_ACCOUNT_ACCESS_KEY: "SYNTHETIC_ACCESS", NCLOUD_ACCOUNT_SECRET_KEY: "SYNTHETIC_SECRET",
   NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: "results/{filename}_{token}.json" };
 const args = { request_id: "filename-test-001", source: "upload_url", filename: "private-meeting.OGG",
   location: "https://media.example.com/synthetic", result_to_obs: true };

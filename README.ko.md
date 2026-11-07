@@ -4,9 +4,9 @@
 
 NAVER Cloud의 여러 서비스를 독립 모듈로 확장하기 위한 로컬 MCP 서버입니다. **현재 구현된 기능은 CLOVA Speech 장문 전사뿐입니다.** Object Storage 관리, 계정/권한 조회, 비용/사용량 조회는 향후 모듈이며, 현재 도구로 제공하지 않습니다. 검증되지 않은 범용 API 실행 기능은 없습니다.
 
-범용 Python 코어는 Dot/OpenAI 구독이나 Sites/Cloudflare 계정에 종속되지 않으며, 호환되는 다른 MCP 클라이언트에서도 사용할 수 있습니다. 향후 Mac 실행 여부와 독립된 사용을 위해 선택 사항인 [Sites 클라우드 어댑터 소스](cloud/sites/README.ko.md)를 별도로 준비했습니다. 아직 배포하거나 연결하지 않았으며, URL/OBS 비동기 입력만 지원하는 준비 단계입니다. 휴대폰 채팅의 첨부 파일이 자동으로 해당 어댑터에 전달되지는 않습니다. [전송 방식·런타임·기능 비교표와 계약 테스트](docs/portability.md)를 참조하세요.
+범용 Python 코어는 Dot/OpenAI 구독이나 Sites/Cloudflare 계정에 종속되지 않으며, 호환되는 다른 MCP 클라이언트에서도 사용할 수 있습니다. 향후 Mac 실행 여부와 독립된 사용을 위해 선택 사항인 [Sites 클라우드 어댑터 소스](cloud/sites/README.ko.md)를 별도로 준비했습니다. URL/OBS 비동기 입력, URL 음원 업로드와 저장 결과 회수를 지원하며 운영자가 자신의 환경에 배포·연결해야 합니다. 휴대폰 채팅의 첨부 파일이 자동으로 해당 어댑터에 전달되지는 않습니다. [전송 방식·런타임·기능 비교표와 계약 테스트](docs/portability.md)를 참조하세요.
 
-공식 **NAVER Cloud CLOVA Speech API**를 사용합니다. CLOVA Note 웹 로그인이나 비공개 브라우저 API를 사용하지 않습니다. 기존 CLOVA Note/웹 구독만으로 이 API를 사용할 수 있다고 가정하면 안 됩니다. 별도의 Speech 도메인 Invoke URL과 Secret, API 사용 과금 확인이 필요합니다. 광범위한 Ncloud 계정 Access Key는 필요하지 않습니다. NAVER 공식 제품이 아닌 독립 커뮤니티 프로젝트입니다.
+공식 **NAVER Cloud CLOVA Speech API**를 사용합니다. CLOVA Note 웹 로그인이나 비공개 브라우저 API를 사용하지 않습니다. 기존 CLOVA Note/웹 구독만으로 이 API를 사용할 수 있다고 가정하면 안 됩니다. 별도의 Speech 도메인 Invoke URL과 Secret, API 사용 과금 확인이 필요합니다. Python 코어에는 계정 API 키가 필요하지 않습니다. 선택적 클라우드 결과 리더는 별도로 승인된 계정/서브계정 API 키 쌍이 필요합니다. NAVER 공식 제품이 아닌 독립 커뮤니티 프로젝트입니다.
 
 ## 설치와 연결
 
@@ -28,14 +28,53 @@ MCP 호스트에 실행 파일의 절대 경로를 등록합니다.
 
 `.env.example`은 변수 안내용이며 자동으로 읽지 않습니다. 호스트의 안전한 환경 설정으로 전달하세요. 키를 채팅에 붙여넣거나 Git에 저장하지 마세요.
 
-- `NCLOUD_SPEECH_ENABLED=true`: Speech 도구 활성화. 기본값은 비활성화입니다.
-- `NCLOUD_SPEECH_INVOKE_URL`, `NCLOUD_SPEECH_SECRET`: Speech 도메인 전용 값. Invoke URL 뒤에 `/recognizer/...`를 붙이지 않습니다.
-- `NCLOUD_SPEECH_LOCAL_ROOTS`: 전사를 허용할 전용 녹음 폴더의 절대 경로. 여러 경로는 OS 경로 구분자로 연결합니다. 홈/소스/자격증명 폴더는 허용하지 마세요.
-- `NCLOUD_SPEECH_URL_HOSTS`: 신뢰하는 공개 HTTPS 호스트명 목록. 정확히 일치하는 호스트만 허용합니다.
-- `NCLOUD_SPEECH_ALLOW_OBJECT_STORAGE=true`: 도메인의 인식 대상 저장소 내 객체 전사 허용.
-- `NCLOUD_SPEECH_ALLOW_ASYNC_OBS=true`: 비동기 결과를 도메인의 Object Storage에 저장하도록 허용.
-
 `--check`와 `ncloud_health`는 네트워크 호출 없이 설정 여부와 제한만 표시합니다. 키, URL, 계정 식별자, 경로는 표시하지 않습니다. 모듈이 활성화되어도 자격증명이 없으면 전사를 거부합니다.
+
+## 환경설정 키 이름
+
+아래는 **변수 이름·역할·필수 여부만** 안내합니다. 실제 키, 개인 버킷명, 허용 호스트
+값은 문서나 채팅에 적지 마세요. Python stdio와 선택적 Sites 어댑터는 별도 설정입니다.
+
+| 변수 이름 | 역할 | 필수 여부 |
+| --- | --- | --- |
+| `NCLOUD_SPEECH_ENABLED` | Speech 모듈 활성화 | Speech 사용 시 |
+| `NCLOUD_SPEECH_INVOKE_URL` | 도메인 기본 Invoke URL, Secret 저장 | Speech 사용 시 |
+| `NCLOUD_SPEECH_SECRET` | 도메인 인증 Secret, 계정 API 키와 별개 | Speech 사용 시 |
+| `NCLOUD_SPEECH_URL_HOSTS` | 공급자가 가져올 음원의 정확한 신뢰 호스트 | URL 입력 시 |
+| `NCLOUD_SPEECH_ALLOW_OBJECT_STORAGE` | 도메인 상대 객체 입력 허용 | 해당 입력 시 |
+| `NCLOUD_SPEECH_ALLOW_ASYNC_OBS` | 비동기 결과 저장 허용 | 비동기 제출 시 |
+
+### 범용 Python stdio 전용
+
+| 변수 이름 | 역할 | 필수 여부 |
+| --- | --- | --- |
+| `NCLOUD_SPEECH_LOCAL_ROOTS` | 허용할 전용 녹음 폴더 | 로컬 파일 입력 시 |
+| `NCLOUD_SPEECH_MAX_UPLOAD_BYTES` | 로컬 업로드 크기 제한 | 선택 |
+| `NCLOUD_SPEECH_TIMEOUT_SECONDS` | 공급자 요청 시간 제한 | 선택 |
+
+### 선택적 Sites 어댑터 전용
+
+| 변수 이름 | 역할 | 필수 여부 |
+| --- | --- | --- |
+| `NCLOUD_SPEECH_UPLOAD_URL_HOSTS` | 어댑터가 가져와 업로드할 음원의 신뢰 호스트 | upload_url 입력 시 |
+| `NCLOUD_SPEECH_MAX_RESULT_BYTES` | 공급자 상태 응답 크기 제한 | 선택 |
+| `NCLOUD_SPEECH_RESULT_STORAGE_ENABLED` | 별도 저장 결과 읽기 활성화 | 저장 결과 회수 시 |
+| `NCLOUD_ACCOUNT_ACCESS_KEY` | 계정/서브계정 API Access Key, Secret 저장 | 저장 결과 회수 시 |
+| `NCLOUD_ACCOUNT_SECRET_KEY` | 위 키와 짝인 API Secret Key, Secret 저장 | 저장 결과 회수 시 |
+| `NCLOUD_SPEECH_RESULT_BUCKET` | 허용한 결과 버킷 하나 | 저장 결과 회수 시 |
+| `NCLOUD_SPEECH_RESULT_PREFIX` | 허용할 객체 경로 접두사 | 루트 접근을 명시 허용하지 않은 경우 |
+| `NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT` | 빈 접두사로 버킷 루트 읽기 허용 | 승인된 루트 접근 시에만 |
+| `NCLOUD_SPEECH_RESULT_KEY_TEMPLATE` | 검증된 토큰/선택 파일명 기반 객체 경로 규칙 | 자동 회수 시 필수, 정확한 키 직접 지정 시 선택 |
+
+계정 키라는 이름이 주계정 사용을 뜻하지는 않습니다. 최소 읽기 권한의 서브계정을
+권장하며 실제 IAM 권한을 확인해야 합니다. 코드의 버킷 제한은 유출된 키의 권한을
+줄이지 않습니다. 기존 `NCLOUD_SPEECH_RESULT_ACCESS_KEY` /
+`NCLOUD_SPEECH_RESULT_SECRET_KEY` 이름은 더 이상 읽지 않으며 호환 fallback이 없습니다.
+`NCLOUD_SPEECH_SECRET`은 별도 도메인 키이므로 유지합니다.
+
+상태 API의 완료 응답은 전사문 회수를 보장하지 않습니다. Python 상태 도구에는
+Object Storage 결과 다운로드 기능이 없으며, 해당 기능은 선택적 어댑터에 있습니다.
+자세한 안전 입력 경로·제한은 [Sites 설정 안내](cloud/sites/README.ko.md)를 보세요.
 
 ## 사용
 

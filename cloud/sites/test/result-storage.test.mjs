@@ -7,8 +7,8 @@ const env = {
   NCLOUD_SPEECH_RESULT_STORAGE_ENABLED: "true",
   NCLOUD_SPEECH_RESULT_BUCKET: "synthetic-results",
   NCLOUD_SPEECH_RESULT_PREFIX: "results/",
-  NCLOUD_SPEECH_RESULT_ACCESS_KEY: "SYNTHETIC_ACCESS_KEY",
-  NCLOUD_SPEECH_RESULT_SECRET_KEY: "SYNTHETIC_SECRET_KEY",
+  NCLOUD_ACCOUNT_ACCESS_KEY: "SYNTHETIC_ACCESS_KEY",
+  NCLOUD_ACCOUNT_SECRET_KEY: "SYNTHETIC_SECRET_KEY",
 };
 const config = storageConfiguration(env);
 const noNetwork = () => assert.fail("No network allowed");
@@ -16,14 +16,14 @@ globalThis.fetch = noNetwork;
 
 function sanitized(error) {
   assert.match(error.message, /^RESULT_STORAGE_[A-Z_]+:/);
-  for (const value of [env.NCLOUD_SPEECH_RESULT_ACCESS_KEY, env.NCLOUD_SPEECH_RESULT_SECRET_KEY,
+  for (const value of [env.NCLOUD_ACCOUNT_ACCESS_KEY, env.NCLOUD_ACCOUNT_SECRET_KEY,
     "PRIVATE_PROVIDER_ERROR", "results/test.json", RESULT_STORAGE_HOST]) assert.ok(!error.message.includes(value));
   return true;
 }
 
 test("storage defaults disabled and does not read credentials", () => {
   assert.deepEqual(storageConfiguration(), { enabled: false, configured: false, bucketRootAllowed: false });
-  assert.deepEqual(storageConfiguration({get NCLOUD_SPEECH_RESULT_SECRET_KEY() { throw Error("must not read"); }}),
+  assert.deepEqual(storageConfiguration({get NCLOUD_ACCOUNT_SECRET_KEY() { throw Error("must not read"); }}),
     { enabled: false, configured: false, bucketRootAllowed: false });
   assert.equal(config.configured, true);
   assert.ok(!JSON.stringify(config).includes("SYNTHETIC_ACCESS_KEY"));
@@ -40,9 +40,9 @@ test("configuration requires bounded bucket, restricted prefix and credential va
     { NCLOUD_SPEECH_RESULT_PREFIX: "results" },
     { NCLOUD_SPEECH_RESULT_PREFIX: "results/../" },
     { NCLOUD_SPEECH_RESULT_PREFIX: "results/%2e%2e/" },
-    { NCLOUD_SPEECH_RESULT_ACCESS_KEY: "evil/key" },
-    { NCLOUD_SPEECH_RESULT_SECRET_KEY: "secret\nkey" },
-    { NCLOUD_SPEECH_RESULT_SECRET_KEY: "x".repeat(4097) },
+    { NCLOUD_ACCOUNT_ACCESS_KEY: "evil/key" },
+    { NCLOUD_ACCOUNT_SECRET_KEY: "secret\nkey" },
+    { NCLOUD_ACCOUNT_SECRET_KEY: "x".repeat(4097) },
   ]) assert.throws(() => storageConfiguration({ ...env, ...overrides }), sanitized);
 });
 
@@ -197,4 +197,15 @@ test("verified filename templates accept only saved opaque supported audio filen
   assert.equal(resultKeyForToken(root, "token", filename), `${filename}_token.json`);
   const tokenOnly = storageConfiguration({ ...env, NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: "results/{token}.json" });
   assert.equal(resultKeyForToken(tokenOnly, "token"), "results/token.json");
+});
+
+test('legacy credential names are not used as fallback', () => {
+  const config = storageConfiguration({
+    NCLOUD_SPEECH_RESULT_STORAGE_ENABLED: 'true',
+    NCLOUD_SPEECH_RESULT_BUCKET: 'synthetic-results',
+    NCLOUD_SPEECH_RESULT_PREFIX: 'results/',
+    NCLOUD_SPEECH_RESULT_ACCESS_KEY: 'LEGACY_SYNTHETIC_ACCESS',
+    NCLOUD_SPEECH_RESULT_SECRET_KEY: 'LEGACY_SYNTHETIC_SECRET',
+  });
+  assert.equal(config.configured, false);
 });

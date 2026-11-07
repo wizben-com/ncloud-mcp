@@ -58,13 +58,13 @@ normalized result once in `structuredContent`, with a short text summary. The fi
 JSON-RPC body is measured after serialization/escaping/UTF-8 encoding and capped
 at 256 KiB. Oversized results return explicit `RESULT_TOO_LARGE`, the known job ID
 and provider state, and a warning not to re-transcribe. The accepted record/token
-is retained even when rendering fails. No pagination or silent truncation exists.
+is retained even when rendering fails. The separate page tool supports bounded pagination; silent truncation is not used.
 
 `db/schema.ts` and `drizzle.config.ts` generate bounded, schema-only migration SQL
 plus snapshots/journal. These are committed and copied to `dist/.openai/drizzle`.
-The installed Sites 1.1.3 packager's actual archive was verified to contain them.
+The deployment archive validator checks migration SQL, snapshots and journal against source.
 Sites applies hosted migrations in its separately authorized publish workflow;
-request handlers execute no CREATE/ALTER/DELETE. No live database exists here.
+request handlers execute no CREATE/ALTER/DELETE. Source checkout alone creates no hosted database.
 Applied migrations must remain immutable; append a new migration for later changes.
 
 Tests use native Node SQLite with a thin D1 API shim, including actual UNIQUE
@@ -77,7 +77,9 @@ pre-production checks after source review and separately approved resource setup
 The new `clova_speech_job_result_page` uses the same owner and domain checks with
 a bounded 16 MiB default/hard maximum provider result (configurable down to 1 MiB).
 The full-status API remains unchanged; page retrieval bypasses its final response
-size bottleneck. No cache, new ledger columns or migration is added. See
+size bottleneck. The pagination feature itself adds no cache or ledger column. The later opaque
+upload-name feature adds a nullable provider_filename column through an additive
+migration. See
 [NO_LOGIN_WORKFLOW.md](NO_LOGIN_WORKFLOW.md) for offsets and completion checks.
 
 ## Empty completed responses and result ownership
