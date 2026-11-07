@@ -12,3 +12,19 @@ Reviewed against official documentation on 2026-11-07. Tests use synthetic respo
 - [Official MCP Python SDK v1](https://py.sdk.modelcontextprotocol.io/v1/): maintained 1.x FastMCP API, intentionally constrained to `<2` for compatibility; `uv.lock` fixes tested versions. Moving to v2 requires a separately tested migration.
 
 The request deliberately implements a limited verified subset: language, completion, diarization enable, full text and word alignment. No invented speaker-count control, streaming, translation, summarization, boosting, webhook management or account APIs are exposed. Async requires either a provider callback or Object Storage result persistence according to the recognition docs. This implementation chooses only the latter and enforces both request and operator opt-in. It persists the transcript to the domain's result bucket. Async submissions require a valid returned tracking token; a missing/invalid token is an unknown or untrackable billable outcome, never permission to resubmit automatically. Completed synchronous responses may omit the token.
+
+## Async retrieval correction (2026-11-08)
+
+The official upload async-delivery matrix specifies that no callback plus
+`resultToObs=true` returns recognition output **only to Object Storage**.
+The job-status documentation includes `COMPLETED` with empty segments. Therefore
+status completion cannot be treated as proof of transcript retrieval. A live
+public 11-second sample reached completion but status returned no content; no
+second recognition request was made. Empty status is not evidence of silence.
+The optional cloud read-only result module requires separately authorized OBS
+access and a known result key (or verified operator template); the Speech domain
+Secret is not an Object Storage key. No key naming convention is invented.
+
+Official storage references:
+- https://api.ncloud-docs.com/docs/storage-objectstorage-getobject
+- https://guide.ncloud-docs.com/docs/storage-objectstorage-subaccount

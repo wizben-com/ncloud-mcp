@@ -79,3 +79,15 @@ a bounded 16 MiB default/hard maximum provider result (configurable down to 1 Mi
 The full-status API remains unchanged; page retrieval bypasses its final response
 size bottleneck. No cache, new ledger columns or migration is added. See
 [NO_LOGIN_WORKFLOW.md](NO_LOGIN_WORKFLOW.md) for offsets and completion checks.
+
+## Empty completed responses and result ownership
+
+A COMPLETED status with no transcript does not finish the retrieval workflow.
+Status exposes sanitized field-presence booleans and result availability. Page
+requests produce RESULT_CONTENT_NOT_RETURNED with the retained job reference.
+An optional independently authorized result reader can GET a verified key from
+one configured private bucket/prefix. It MUST match the artifact's provider token
+to the owner's existing job before returning content. No token, storage key,
+credential or raw upstream error is returned in tool diagnostics. No new job or
+recognition request is created during result recovery. Stored transcript data is
+not cached in D1. The retrieval module stays disabled until configured.

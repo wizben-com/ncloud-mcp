@@ -352,7 +352,7 @@ test("readiness requires credentials, an input, persistence and a DB binding, wi
     [{ NCLOUD_SPEECH_ENABLED: "false" }, false],
   ]) {
     const result = await call(server, "ncloud_cloud_health", {}, { ...bindings(), ...overrides });
-    assert.equal(result.rpc.result.structuredContent.ready_for_async_transcription, expected);
+    assert.equal(result.rpc.result.structuredContent.ready_for_async_submission, expected);
     assert.equal(result.rpc.result.structuredContent.network_check_performed, false);
   }
   for (const value of ["0", "1048575", "16777217", "Infinity", "private", 16777216]) {

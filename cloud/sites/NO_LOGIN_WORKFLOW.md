@@ -1,7 +1,8 @@
 # Headless long-recording workflow
 
-The adapter uses the existing domain Invoke URL and Secret, not NAVER login
-cookies or account-wide API keys. No new Object Storage credentials are required.
+Speech submission uses the existing domain Invoke URL and Secret, not NAVER login
+cookies. Retrieving async transcripts additionally requires authorized result-storage
+read access, as detailed below; the domain Secret alone is insufficient.
 
 ## Root cause
 
@@ -9,9 +10,55 @@ cookies or account-wide API keys. No new Object Storage credentials are required
 Input routes and async persistence were independently disabled; cloud file upload
 was absent; long results exceeded the 1 MiB provider / 256 KiB RPC caps.
 
-`ready_for_async_transcription` now checks configuration, input, persistence and
-DB binding. It is OFFLINE and does not prove authentication, migrations or actual
-result-bucket permissions. Never report live success from health alone.
+`ready_for_async_submission` checks configuration, input, persistence and DB binding.
+`ready_for_async_transcription` additionally requires a configured result reader
+and an operator-verified key template. Both are OFFLINE and do not prove live
+credentials, migrations, actual storage permissions or correct key mapping.
+Never report live end-to-end success from health alone.
+
+## Processing completion is not transcript retrieval
+
+The official async contract says a request with no callback and resultToObs=true
+sends recognition output **only to Object Storage**. The status API documents a
+COMPLETED response with empty segments. The prior assumption that polling status
+would always return the transcript was wrong. A real 11-second public sample
+confirmed acceptance/completion but returned no text or segments. No retry was
+performed. This does not prove that the source was silent or recognition was empty.
+
+Status now reports `result_available`, `result_retrieved`, and text/segments field
+presence. A completed empty status response marks `result_retrieval_required`;
+pages fail with RESULT_CONTENT_NOT_RETURNED rather than claim an empty transcript
+was successfully recovered. Retrieve the existing result artifact, never resubmit.
+
+An optional read-only Object Storage module is OFF by default. It uses the fixed
+Korea endpoint kr.object.ncloudstorage.com and kr-standard region, one bucket,
+a nonempty prefix, GET only, no redirects, 16 MiB limit, and bounded deadlines.
+The returned JSON must be COMPLETED and its token must match the owned job's
+server-side token before any transcript is exposed. No list/write/delete/ACL
+operations or credential fallback exist.
+
+Configuration, only after explicit authorization:
+- NCLOUD_SPEECH_RESULT_STORAGE_ENABLED=true
+- NCLOUD_SPEECH_RESULT_BUCKET: identified result bucket
+- NCLOUD_SPEECH_RESULT_PREFIX: allowed nonempty path ending in /
+- NCLOUD_SPEECH_RESULT_ACCESS_KEY and NCLOUD_SPEECH_RESULT_SECRET_KEY: Site Secrets
+  for a separately approved read-only subaccount, not the main-account key.
+- Optional NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: verified actual object-key pattern
+  under the prefix containing exactly one {token}. There is NO guessed default.
+
+NAVER documentation does not establish IAM prefix-scoped permissions: request the
+narrowest supported bucket scope and additionally enforce the prefix in code.
+The operator must verify actual GET permission and object naming. If no stable
+verified template exists, pass the exact existing `object_key` to the page tool.
+That avoids a login only when the key is already known; full automatic discovery
+is not implemented. An empty result object matched to the job is distinguished
+from an empty status response (`result_retrieved=true`).
+
+The Speech domain secret cannot sign Object Storage requests. Without additional
+read access or an already-authorized result artifact, this integration cannot
+recover private persisted results by itself. A new public callback receiver is a
+separate alternative for future jobs, not recovery for this one; do not make this
+private Site public or put a Sites bypass token in a callback URL.
 
 ## Direct media source
 
