@@ -93,8 +93,6 @@ Use the [Sites setup guide](cloud/sites/README.md) for secure entry, input choic
 and limits. Account names do not imply a main-account key or broad permissions:
 prefer a minimally authorized subaccount. The result reader performs GET only
 against one configured bucket. It cannot reduce the permissions of a leaked key.
-`NCLOUD_SPEECH_RESULT_ACCESS_KEY` and `NCLOUD_SPEECH_RESULT_SECRET_KEY` are no
-longer read; there is no legacy fallback. Keep `NCLOUD_SPEECH_SECRET` separate.
 
 A completed status response may contain no transcript. The Python status tool
 does not implement Object Storage result downloads; the optional hosted reader

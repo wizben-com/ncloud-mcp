@@ -68,9 +68,7 @@ MCP 호스트에 실행 파일의 절대 경로를 등록합니다.
 
 계정 키라는 이름이 주계정 사용을 뜻하지는 않습니다. 최소 읽기 권한의 서브계정을
 권장하며 실제 IAM 권한을 확인해야 합니다. 코드의 버킷 제한은 유출된 키의 권한을
-줄이지 않습니다. 기존 `NCLOUD_SPEECH_RESULT_ACCESS_KEY` /
-`NCLOUD_SPEECH_RESULT_SECRET_KEY` 이름은 더 이상 읽지 않으며 호환 fallback이 없습니다.
-`NCLOUD_SPEECH_SECRET`은 별도 도메인 키이므로 유지합니다.
+줄이지 않습니다.
 
 상태 API의 완료 응답은 전사문 회수를 보장하지 않습니다. Python 상태 도구에는
 Object Storage 결과 다운로드 기능이 없으며, 해당 기능은 선택적 어댑터에 있습니다.

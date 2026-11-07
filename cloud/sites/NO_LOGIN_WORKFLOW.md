@@ -132,5 +132,4 @@ filename template. Original request fingerprint/idempotency semantics are unchan
 
 The NCLOUD_ACCOUNT_* names identify an API credential pair, not a requirement to
 use the main account. Prefer the authorized subaccount. Names do not change IAM
-permissions. The old NCLOUD_SPEECH_RESULT_ACCESS_KEY / SECRET_KEY names are not
-read or used as fallback. NCLOUD_SPEECH_SECRET remains the separate domain secret.
+permissions. NCLOUD_SPEECH_SECRET authenticates the Speech domain separately.

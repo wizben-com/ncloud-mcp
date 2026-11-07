@@ -27,9 +27,8 @@ Store these four entries as **Secrets**:
 | `NCLOUD_ACCOUNT_SECRET_KEY` | Matching account/subaccount API secret | Object Storage result recovery |
 
 The two credential pairs are different. `ACCOUNT` does not mean a main account:
-prefer an explicitly authorized least-privilege subaccount. The legacy result-key
-variable names are no longer consumed; there is no fallback. Changing a variable
-name does not change IAM permissions. Redeploy a saved version after runtime
+prefer an explicitly authorized least-privilege subaccount. Credential scope is
+determined by IAM permissions, not variable names. Redeploy a saved version after runtime
 settings change; saving environment settings alone does not update a running version.
 
 Required setup sequence:
