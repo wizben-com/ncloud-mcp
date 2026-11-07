@@ -193,3 +193,9 @@ Sites-specific routing, access and manifest requirements are taken from the
 installed Sites skill's `references/site-mcp-server.md`,
 `references/identity-and-secrets.md`, and Worker ESM starter README; no public
 Sites protocol URL is invented. No live API behavior was tested here.
+
+## Headless uploads and large results
+
+See [NO_LOGIN_WORKFLOW.md](NO_LOGIN_WORKFLOW.md) for the `upload_url` route,
+exact media-host allowlists, offline readiness and paged transcript retrieval.
+No account-wide credential or NAVER browser session is required for these routes.

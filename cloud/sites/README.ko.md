@@ -71,3 +71,11 @@ SQLite의 D1 API shim을 사용하며 라이브 D1 검증은 아닙니다. D1에
 전사 본문은 저장하지 않습니다. 기록 삭제는 중복 방지 보장을 끝낼 수 있습니다.
 기존 범용 Python 구현은 변경하지 않았습니다. 세부 요청 형식, 공식 API
 근거와 향후 배포 절차는 영문 문서를 참조하세요.
+
+## 로그인 없는 업로드와 긴 결과 회수
+
+[설정과 제한 안내](NO_LOGIN_WORKFLOW.md)를 확인하세요. `upload_url`은 별도 허용
+호스트의 음원을 최대 25 MiB까지 가져와 multipart로 전송합니다. 기존 Speech 키만
+사용하며 네이버 로그인 쿠키나 계정 전체 API 키는 필요 없습니다. 긴 결과는
+`clova_speech_job_result_page`의 `next_offset`을 따라 끝까지 읽습니다.
+`ready_for_async_transcription`은 구성 점검이며 실제 통신 성공과 구분합니다.

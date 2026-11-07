@@ -71,3 +71,11 @@ Tests use native Node SQLite with a thin D1 API shim, including actual UNIQUE
 claim SQL and separate file-backed SQLite connections. They do not prove Cloudflare
 D1 replication/failover/session behavior or platform access controls. Those remain
 pre-production checks after source review and separately approved resource setup.
+
+## Paged retrieval addition
+
+The new `clova_speech_job_result_page` uses the same owner and domain checks with
+a bounded 16 MiB default/hard maximum provider result (configurable down to 1 MiB).
+The full-status API remains unchanged; page retrieval bypasses its final response
+size bottleneck. No cache, new ledger columns or migration is added. See
+[NO_LOGIN_WORKFLOW.md](NO_LOGIN_WORKFLOW.md) for offsets and completion checks.

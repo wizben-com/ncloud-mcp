@@ -55,16 +55,16 @@ test("Sites discovery and tool schemas expose only the cloud subset", async () =
   assert.deepEqual(discovered.result, { supportedVersions: ["2026-07-28"], capabilities: { tools: {} }, resultType: "complete" });
   const listed = await (await server.fetch(request("tools/list"))).json();
   assert.equal(listed.result.resultType, "complete");
-  assert.equal(listed.result.tools.length, 3);
+  assert.equal(listed.result.tools.length, 4);
   const submit = listed.result.tools.find((t) => t.name === "clova_speech_submit_async");
-  assert.deepEqual(submit.inputSchema.properties.source.enum, ["url", "object_storage"]);
+  assert.deepEqual(submit.inputSchema.properties.source.enum, ["url", "object_storage", "upload_url"]);
   assert.equal(submit.annotations.idempotentHint, false);
   assert.match(submit.description, /persisted.*Object Storage/);
 });
 
 test("every tool rejects missing identity before reading environment or fetching", async () => {
   const bindings = new Proxy({}, { get: () => assert.fail("No config access before identity") });
-  for (const name of ["ncloud_cloud_health", "clova_speech_submit_async", "clova_speech_job_status"]) {
+  for (const name of ["ncloud_cloud_health", "clova_speech_submit_async", "clova_speech_job_status", "clova_speech_job_result_page"]) {
     const { response, rpc } = await call(createWorker({ fetchImpl: noNetwork }), name, {}, bindings,
       { identity: false });
     assert.equal(response.status, 403);
@@ -339,4 +339,24 @@ test("normalization matches the same provider-only contract used by Python", asy
   for (const fixture of contract.cases) {
     assert.deepEqual(normalize(fixture.provider, fixture.require_token), fixture.normalized, fixture.name);
   }
+});
+
+test("readiness requires credentials, an input, persistence and a DB binding, without network checks", async () => {
+  const server = createWorker({ fetchImpl: noNetwork });
+  for (const [overrides, expected] of [
+    [{}, true], [{ DB: undefined }, false], [{ "NCLOUD_SPEECH_SECRET": "" }, false],
+    [{ NCLOUD_SPEECH_ALLOW_ASYNC_OBS: "false" }, false],
+    [{ NCLOUD_SPEECH_URL_HOSTS: "", NCLOUD_SPEECH_ALLOW_OBJECT_STORAGE: "false" }, false],
+    [{ NCLOUD_SPEECH_URL_HOSTS: "", NCLOUD_SPEECH_ALLOW_OBJECT_STORAGE: "false",
+      NCLOUD_SPEECH_UPLOAD_URL_HOSTS: "media.example.com" }, true],
+    [{ NCLOUD_SPEECH_ENABLED: "false" }, false],
+  ]) {
+    const result = await call(server, "ncloud_cloud_health", {}, { ...bindings(), ...overrides });
+    assert.equal(result.rpc.result.structuredContent.ready_for_async_transcription, expected);
+    assert.equal(result.rpc.result.structuredContent.network_check_performed, false);
+  }
+  for (const value of ["0", "1048575", "16777217", "Infinity", "private", 16777216]) {
+    assert.throws(() => configuration({ ...env, NCLOUD_SPEECH_MAX_RESULT_BYTES: value }), /Invalid result byte limit/);
+  }
+  assert.equal(configuration(env).maxResultBytes, 16_777_216);
 });

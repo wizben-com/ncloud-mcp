@@ -7,10 +7,7 @@ const projectRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const workerPath = resolve(projectRoot, "dist/server/index.js");
 const manifestPath = resolve(projectRoot, "dist/.openai/hosting.json");
 
-const [source, manifest] = await Promise.all([
-  readFile(workerPath, "utf8"),
-  readFile(manifestPath, "utf8"),
-]);
+const manifest = await readFile(manifestPath, "utf8");
 assert.equal(JSON.parse(manifest).d1, "DB", "D1 logical binding is required");
 assert.equal(JSON.parse(manifest).r2, null);
 const migrationSource = resolve(projectRoot, "drizzle");
@@ -34,8 +31,8 @@ for (const entry of journal.entries) {
   JSON.parse(await readFile(resolve(migrationBuild, "meta", String(entry.idx).padStart(4, "0") + "_snapshot.json"), "utf8"));
 }
 
-// A data URL forces ESM parsing even though the generated output has no package.json.
-const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+// Import the actual built module so relative helper imports are validated too.
+const moduleUrl = pathToFileURL(workerPath).href;
 const workerModule = await import(moduleUrl);
 assert.equal(
   typeof workerModule.default?.fetch,

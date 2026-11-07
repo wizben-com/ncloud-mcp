@@ -189,3 +189,74 @@ test("final serialized/escaped response cap prevents normalized amplification wi
     assert.ok(!JSON.stringify(record).includes("segments"));
   }
 });
+
+test("long result pages reconstruct Unicode text and segment slices without resubmission", async () => {
+  const settings = { ...base, DB: db() }, id = await seedAccepted(settings);
+  const text = "가😀\n\"".repeat(110_000);
+  const segments = Array.from({ length: 201 }, (_, n) => ({ start: n, end: n + 1, text: String(n) }));
+  let reads = 0;
+  const worker = server(async (_, options) => {
+    assert.equal(options.method, "GET"); reads++;
+    return Response.json({ result: "COMPLETED", text, segments });
+  });
+  let offset = 0, assembled = "";
+  do {
+    const result = await call(worker, settings, "clova_speech_job_result_page", { job_id: id, offset });
+    assert.equal(result.isError, false);
+    const page = result.structuredContent;
+    assert.equal(Array.from(page.text).length, page.count);
+    assert.equal(page.total, Array.from(text).length);
+    assembled += page.text; offset = page.next_offset;
+  } while (offset !== null);
+  assert.equal(assembled, text);
+  const page = (await call(worker, settings, "clova_speech_job_result_page",
+    { job_id: id, format: "segments", offset: 100, limit: 100 })).structuredContent;
+  assert.equal(page.segments[0].text, "100");
+  assert.equal(page.count, 100); assert.equal(page.next_offset, 200);
+  assert.ok(reads > 1);
+});
+
+test("page bounds, owner, provider scope and zero/end offsets are enforced", async () => {
+  const settings = { ...base, DB: db() }, id = await seedAccepted(settings);
+  for (const input of [{ offset: -1 }, { offset: 0.5 }, { limit: 0 }, { limit: 16385 },
+    { format: "segments", limit: 101 }, { format: "bad" }, { token: "bad" }]) {
+    assert.equal((await call(server(), settings, "clova_speech_job_result_page", { job_id: id, ...input })).isError, true);
+  }
+  const wrong = await call(server(), settings, "clova_speech_job_result_page", { job_id: id }, "another-owner");
+  assert.match(wrong.content[0].text, /JOB_NOT_FOUND/);
+  const changed = await call(server(), { ...settings, NCLOUD_SPEECH_INVOKE_URL: base.NCLOUD_SPEECH_INVOKE_URL + "_CHANGED" },
+    "clova_speech_job_result_page", { job_id: id });
+  assert.match(changed.content[0].text, /PROVIDER_SCOPE_CHANGED/);
+  const worker = server(async () => Response.json({ result: "COMPLETED", text: "😀" }));
+  const end = await call(worker, settings, "clova_speech_job_result_page", { job_id: id, offset: 1 });
+  assert.equal(end.structuredContent.text, ""); assert.equal(end.structuredContent.next_offset, null);
+  assert.match((await call(worker, settings, "clova_speech_job_result_page", { job_id: id, offset: 2 })).content[0].text,
+    /PAGE_OFFSET_OUT_OF_RANGE/);
+});
+
+test("provider oversize status is explicit, retained and never retried for headers or streams", async () => {
+  const settings = { ...base, NCLOUD_SPEECH_MAX_RESULT_BYTES: String(LIMITS.responseBytes), DB: db() };
+  const id = await seedAccepted(settings);
+  for (const headers of [{}, { "Content-Length": String(LIMITS.responseBytes + 1) }]) {
+    let reads = 0;
+    const worker = server(async (_, options) => {
+      reads++; assert.equal(options.method, "GET");
+      return new Response("x".repeat(LIMITS.responseBytes + 1), { headers });
+    });
+    const result = await call(worker, settings, "clova_speech_job_result_page", { job_id: id });
+    assert.match(result.content[0].text, /PROVIDER_RESULT_TOO_LARGE/);
+    assert.equal(result.structuredContent.job_id, id); assert.equal(reads, 1);
+    assert.match(result.content[0].text, /Do not re-transcribe/);
+  }
+});
+
+test("segment pages shrink to final byte budget and explicitly reject a single oversized segment", async () => {
+  const settings = { ...base, DB: db() }, id = await seedAccepted(settings);
+  const segments = Array.from({ length: 20 }, (_, n) => ({ start: n, end: n + 1, text: "가".repeat(5000) }));
+  const worker = server(async () => Response.json({ result: "COMPLETED", segments }));
+  const result = await call(worker, settings, "clova_speech_job_result_page", { job_id: id, format: "segments" });
+  assert.equal(result.isError, false); assert.ok(result.structuredContent.count < 20);
+  const huge = server(async () => Response.json({ result: "COMPLETED", segments: [{ start: 0, end: 1, text: "x".repeat(140_000) }] }));
+  const failure = await call(huge, settings, "clova_speech_job_result_page", { job_id: id, format: "segments" });
+  assert.match(failure.content[0].text, /SEGMENT_TOO_LARGE/);
+});
