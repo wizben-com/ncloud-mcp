@@ -1,6 +1,7 @@
 /** Read-only NAVER Object Storage result access using portable Web Crypto/Fetch.
  * Restrict credentials to the narrowest bucket scope NAVER supports; the code also
- * enforces a configured prefix. IAM prefix-scoping is not established by the docs.
+ * enforces a configured prefix unless bucket-root access is explicitly enabled.
+ * IAM prefix-scoping is not established by the docs.
  * This module cannot prove the permissions on a supplied key. No account-key fallback.
  * Caller MUST authenticate job ownership and match the returned provider token before use.
  */
@@ -32,11 +33,22 @@ function validBucket(value) {
     !/^\d+\.\d+\.\d+\.\d+$/.test(value);
 }
 
+// Templates are operator-verified layouts, never inferred from a provider response.
+function validTemplate(template) {
+  return typeof template === "string" && template.split("{token}").length === 2 &&
+    template.split("{filename}").length <= 2 &&
+    !/[{}]/.test(template.replace("{token}", "").replace("{filename}", ""));
+}
+const PROVIDER_FILENAME = /^audio_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:wav|mp3|ogg|flac|m4a|mp4|aac|ac3)$/i;
+
 export function storageConfiguration(env = {}) {
   try {
     const flag = env.NCLOUD_SPEECH_RESULT_STORAGE_ENABLED ?? "false";
     if (flag !== "true" && flag !== "false") throw fail("RESULT_STORAGE_INVALID_CONFIGURATION");
-    if (flag === "false") return Object.freeze({ enabled: false, configured: false });
+    if (flag === "false") return Object.freeze({ enabled: false, configured: false, bucketRootAllowed: false });
+    const rootFlag = env.NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT ?? "false";
+    if (rootFlag !== "true" && rootFlag !== "false") throw fail("RESULT_STORAGE_INVALID_CONFIGURATION");
+    const bucketRootAllowed = rootFlag === "true";
     const bucket = env.NCLOUD_SPEECH_RESULT_BUCKET ?? "";
     const prefix = env.NCLOUD_SPEECH_RESULT_PREFIX ?? "";
     const keyTemplate = env.NCLOUD_SPEECH_RESULT_KEY_TEMPLATE ?? "";
@@ -46,11 +58,10 @@ export function storageConfiguration(env = {}) {
         (prefix !== "" && !validPath(prefix, 512, true)) ||
         (accessKey !== "" && (!validCredential(accessKey) || /[,\/]/.test(accessKey))) ||
         (secretKey !== "" && !validCredential(secretKey))) throw fail("RESULT_STORAGE_INVALID_CONFIGURATION");
-    if (keyTemplate !== "" && (typeof keyTemplate !== "string" ||
-        keyTemplate.split("{token}").length !== 2 || /[{}]/.test(keyTemplate.replace("{token}", "")) ||
-        !validPath(keyTemplate.replace("{token}", "SYNTHETIC"), 1024) || !prefix ||
+    if (keyTemplate !== "" && (!validTemplate(keyTemplate) ||
+        !validPath(keyTemplate.replace("{token}", "SYNTHETIC").replace("{filename}", "audio_00000000-0000-0000-0000-000000000000.wav"), 1024) || (!prefix && !bucketRootAllowed) ||
         !keyTemplate.startsWith(prefix))) throw fail("RESULT_STORAGE_INVALID_CONFIGURATION");
-    const config = { enabled: true, configured: Boolean(bucket && prefix && accessKey && secretKey), bucket, prefix, keyTemplate };
+    const config = { enabled: true, configured: Boolean(bucket && (prefix || bucketRootAllowed) && accessKey && secretKey), bucket, prefix, keyTemplate, bucketRootAllowed };
     // Avoid accidental exposure through ordinary JSON/configuration diagnostics.
     Object.defineProperties(config, { accessKey: { value: accessKey }, secretKey: { value: secretKey } });
     return Object.freeze(config);
@@ -60,19 +71,26 @@ export function storageConfiguration(env = {}) {
 function validateRequest(key, config) {
   if (!config?.enabled) throw fail("RESULT_STORAGE_DISABLED");
   if (!config.configured) throw fail("RESULT_STORAGE_UNCONFIGURED");
-  if (!validBucket(config.bucket) || !validPath(config.prefix, 512, true) ||
+  if (!validBucket(config.bucket) ||
+      !(validPath(config.prefix, 512, true) || (config.prefix === "" && config.bucketRootAllowed === true)) ||
       !validCredential(config.accessKey) || /[,\/]/.test(config.accessKey) ||
       !validCredential(config.secretKey)) throw fail("RESULT_STORAGE_INVALID_CONFIGURATION");
   if (!validPath(key, 1024) || !key.startsWith(config.prefix) || key === config.prefix) {
     throw fail("RESULT_STORAGE_INVALID_KEY");
   }
 }
-export function resultKeyForToken(config, token) {
+export function resultKeyForToken(config, token, providerFilename = null) {
   if (!config?.keyTemplate) return null;
   if (typeof token !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(token) || /[\r\n]/.test(token) ||
-      typeof config.keyTemplate !== "string" || config.keyTemplate.split("{token}").length !== 2 ||
-      /[{}]/.test(config.keyTemplate.replace("{token}", ""))) throw fail("RESULT_STORAGE_INVALID_KEY");
-  const key = config.keyTemplate.replace("{token}", token);
+      !validTemplate(config.keyTemplate)) throw fail("RESULT_STORAGE_INVALID_KEY");
+  let key = config.keyTemplate.replace("{token}", token);
+  if (key.includes("{filename}")) {
+    // Legacy jobs may not have a saved opaque filename. Do not guess one.
+    if (providerFilename === null || providerFilename === undefined) return null;
+    if (typeof providerFilename !== "string" || !PROVIDER_FILENAME.test(providerFilename) ||
+        /[\r\n]/.test(providerFilename)) throw fail("RESULT_STORAGE_INVALID_KEY");
+    key = key.replace("{filename}", providerFilename);
+  }
   validateRequest(key, config);
   return key;
 }

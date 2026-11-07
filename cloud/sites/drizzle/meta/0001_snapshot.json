@@ -1,0 +1,144 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "bb3c8f58-3b04-4d83-8d4a-447f386dfca4",
+  "prevId": "423d9ce3-3170-49e5-87e7-a03f25f26288",
+  "tables": {
+    "ncloud_speech_jobs": {
+      "name": "ncloud_speech_jobs",
+      "columns": {
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_scope": {
+          "name": "provider_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "submission_state": {
+          "name": "submission_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "upstream_token": {
+          "name": "upstream_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_state": {
+          "name": "provider_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_filename": {
+          "name": "provider_filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "speech_owner_request_unique": {
+          "name": "speech_owner_request_unique",
+          "columns": [
+            "owner_id",
+            "request_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "speech_job_id_length": {
+          "name": "speech_job_id_length",
+          "value": "length(\"ncloud_speech_jobs\".\"job_id\") = 40"
+        },
+        "speech_owner_length": {
+          "name": "speech_owner_length",
+          "value": "length(\"ncloud_speech_jobs\".\"owner_id\") BETWEEN 1 AND 256"
+        },
+        "speech_request_id": {
+          "name": "speech_request_id",
+          "value": "length(\"ncloud_speech_jobs\".\"request_id\") BETWEEN 8 AND 128 AND \"ncloud_speech_jobs\".\"request_id\" NOT GLOB '*[^A-Za-z0-9_-]*'"
+        },
+        "speech_scope_hash": {
+          "name": "speech_scope_hash",
+          "value": "length(\"ncloud_speech_jobs\".\"provider_scope\") = 64 AND \"ncloud_speech_jobs\".\"provider_scope\" NOT GLOB '*[^0-9a-f]*'"
+        },
+        "speech_payload_hash": {
+          "name": "speech_payload_hash",
+          "value": "length(\"ncloud_speech_jobs\".\"payload_hash\") = 64 AND \"ncloud_speech_jobs\".\"payload_hash\" NOT GLOB '*[^0-9a-f]*'"
+        },
+        "speech_submission_state": {
+          "name": "speech_submission_state",
+          "value": "\"ncloud_speech_jobs\".\"submission_state\" IN ('SUBMITTING', 'ACCEPTED', 'UNKNOWN')"
+        },
+        "speech_token": {
+          "name": "speech_token",
+          "value": "\"ncloud_speech_jobs\".\"upstream_token\" IS NULL OR (length(\"ncloud_speech_jobs\".\"upstream_token\") BETWEEN 1 AND 256 AND \"ncloud_speech_jobs\".\"upstream_token\" NOT GLOB '*[^A-Za-z0-9_-]*')"
+        },
+        "speech_accepted_tracking": {
+          "name": "speech_accepted_tracking",
+          "value": "\"ncloud_speech_jobs\".\"submission_state\" != 'ACCEPTED' OR \"ncloud_speech_jobs\".\"upstream_token\" IS NOT NULL"
+        },
+        "speech_provider_state": {
+          "name": "speech_provider_state",
+          "value": "\"ncloud_speech_jobs\".\"provider_state\" IS NULL OR \"ncloud_speech_jobs\".\"provider_state\" IN ('SUCCEEDED', 'WAITING', 'PROCESSING', 'FAILED', 'COMPLETED', 'TIMEOUT')"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

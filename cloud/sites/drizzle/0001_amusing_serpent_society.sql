@@ -1,0 +1,1 @@
+ALTER TABLE `ncloud_speech_jobs` ADD `provider_filename` text;

@@ -22,9 +22,9 @@ function sanitized(error) {
 }
 
 test("storage defaults disabled and does not read credentials", () => {
-  assert.deepEqual(storageConfiguration(), { enabled: false, configured: false });
+  assert.deepEqual(storageConfiguration(), { enabled: false, configured: false, bucketRootAllowed: false });
   assert.deepEqual(storageConfiguration({get NCLOUD_SPEECH_RESULT_SECRET_KEY() { throw Error("must not read"); }}),
-    { enabled: false, configured: false });
+    { enabled: false, configured: false, bucketRootAllowed: false });
   assert.equal(config.configured, true);
   assert.ok(!JSON.stringify(config).includes("SYNTHETIC_ACCESS_KEY"));
   assert.ok(!JSON.stringify(config).includes("SYNTHETIC_SECRET_KEY"));
@@ -125,4 +125,76 @@ test("aborted operations do not fetch or return a late result", async () => {
   controller.abort();
   await assert.rejects(pending, sanitized);
   resolveFetch(Response.json({ text: "Late content" }));
+});
+
+
+test("bucket-root access requires the exact explicit flag and remains read-only", async () => {
+  const rootEnv = { ...env, NCLOUD_SPEECH_RESULT_PREFIX: "" };
+  for (const flag of [undefined, "false"]) {
+    const denied = storageConfiguration({ ...rootEnv, NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT: flag });
+    assert.equal(denied.configured, false);
+    assert.equal(denied.bucketRootAllowed, false);
+    await assert.rejects(fetchResultObject("test.json", denied, noNetwork), sanitized);
+    assert.throws(() => storageConfiguration({ ...rootEnv, NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT: flag,
+      NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: "{token}.json" }), sanitized);
+  }
+  for (const flag of [true, "TRUE", "yes", ""]) assert.throws(() => storageConfiguration({
+    ...rootEnv, NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT: flag }), sanitized);
+  const root = storageConfiguration({ ...rootEnv, NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT: "true",
+    NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: "{token}.json" });
+  assert.equal(root.configured, true);
+  assert.equal(root.bucketRootAllowed, true);
+  assert.equal(resultKeyForToken(root, "synthetic-token"), "synthetic-token.json");
+  let calls = 0;
+  await fetchResultObject("synthetic-token.json", root, async (url, init) => {
+    calls++;
+    assert.equal(url, "https://kr.object.ncloudstorage.com/synthetic-results/synthetic-token.json");
+    assert.equal(init.method, "GET");
+    assert.equal(init.credentials, "omit");
+    assert.equal(init.redirect, "manual");
+    return Response.json({ token: "synthetic-token" });
+  });
+  assert.equal(calls, 1);
+  for (const key of ["", "/", "/test.json", "../test.json", "a/../test.json", "a//b", "a%2fb",
+    "a?x=1", "a#fragment", "https://evil.example/a", "a\\b", "a\u0000b"]) {
+    await assert.rejects(fetchResultObject(key, root, noNetwork), sanitized);
+  }
+  for (const template of ["../{token}.json", "/{token}.json", "{token}?x=1"]) {
+    assert.throws(() => storageConfiguration({ ...rootEnv, NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT: "true",
+      NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: template }), sanitized);
+  }
+  // Even an explicit root flag does not widen a configured nonempty prefix.
+  const prefixed = storageConfiguration({ ...env, NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT: "true" });
+  await assert.rejects(fetchResultObject("test.json", prefixed, noNetwork), sanitized);
+  assert.throws(() => storageConfiguration({ ...env, NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT: "true",
+    NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: "{token}.json" }), sanitized);
+});
+
+
+test("verified filename templates accept only saved opaque supported audio filenames", () => {
+  const filename = "audio_12345678-1234-1234-1234-123456789abc.wav";
+  const templated = storageConfiguration({ ...env,
+    NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: "results/{token}/{filename}.json" });
+  assert.equal(resultKeyForToken(templated, "token", filename), `results/token/${filename}.json`);
+  assert.equal(resultKeyForToken(templated, "token"), null);
+  assert.equal(resultKeyForToken(templated, "token", null), null);
+  for (const extension of ["wav", "mp3", "ogg", "flac", "m4a", "mp4", "aac", "ac3", "WAV"]) {
+    const name = filename.replace(/wav$/, extension);
+    assert.equal(resultKeyForToken(templated, "token", name), `results/token/${name}.json`);
+  }
+  for (const name of ["", "meeting.wav", "audio_token.wav", filename + "\n", "../" + filename,
+    "folder/" + filename, filename.replace(".wav", ".exe"), filename + "?x", filename + "#x", 123]) {
+    assert.throws(() => resultKeyForToken(templated, "token", name), sanitized);
+  }
+  for (const template of ["results/{filename}.json", "results/{token}/{filename}/{filename}",
+    "results/{token}/{filename}/{other}", "results/{token}/../{filename}", "{token}/{filename}"]) {
+    assert.throws(() => storageConfiguration({ ...env, NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: template }), sanitized);
+  }
+  const rootEnv = { ...env, NCLOUD_SPEECH_RESULT_PREFIX: "",
+    NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: "{filename}_{token}.json" };
+  assert.throws(() => storageConfiguration(rootEnv), sanitized);
+  const root = storageConfiguration({ ...rootEnv, NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT: "true" });
+  assert.equal(resultKeyForToken(root, "token", filename), `${filename}_token.json`);
+  const tokenOnly = storageConfiguration({ ...env, NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: "results/{token}.json" });
+  assert.equal(resultKeyForToken(tokenOnly, "token"), "results/token.json");
 });

@@ -91,3 +91,9 @@ to the owner's existing job before returning content. No token, storage key,
 credential or raw upstream error is returned in tool diagnostics. No new job or
 recognition request is created during result recovery. Stored transcript data is
 not cached in D1. The retrieval module stays disabled until configured.
+
+Storage artifact SUCCEEDED is not submission acceptance: after matching the owned
+provider token, valid result artifacts normalize to COMPLETED. New upload_url jobs
+store an opaque provider_filename before POST; this nullable additive ledger field
+lets verified result-key templates work without retaining original media filenames.
+Legacy jobs do not acquire guessed filenames. No raw transcript is stored in D1.

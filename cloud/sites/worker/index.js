@@ -316,12 +316,12 @@ async function upstream(config, method, endpoint, body, fetchImpl, timeoutMs) {
 // Fixed, bound statements only. Migration-owned tables are never created here.
 export const SQL = Object.freeze({
   claim: `INSERT INTO ncloud_speech_jobs
-    (job_id, owner_id, request_id, provider_scope, payload_hash, submission_state, created_at)
-    VALUES (?, ?, ?, ?, ?, 'SUBMITTING', ?) ON CONFLICT(owner_id, request_id) DO NOTHING`,
+    (job_id, owner_id, request_id, provider_scope, payload_hash, submission_state, created_at, provider_filename)
+    VALUES (?, ?, ?, ?, ?, 'SUBMITTING', ?, ?) ON CONFLICT(owner_id, request_id) DO NOTHING`,
   request: `SELECT job_id, owner_id, request_id, provider_scope, payload_hash, submission_state,
-    upstream_token, provider_state FROM ncloud_speech_jobs WHERE owner_id = ? AND request_id = ?`,
+    upstream_token, provider_state, provider_filename FROM ncloud_speech_jobs WHERE owner_id = ? AND request_id = ?`,
   owned: `SELECT job_id, owner_id, request_id, provider_scope, payload_hash, submission_state,
-    upstream_token, provider_state FROM ncloud_speech_jobs WHERE job_id = ? AND owner_id = ?`,
+    upstream_token, provider_state, provider_filename FROM ncloud_speech_jobs WHERE job_id = ? AND owner_id = ?`,
   accepted: `UPDATE ncloud_speech_jobs SET submission_state = 'ACCEPTED', upstream_token = ?, provider_state = ?
     WHERE job_id = ? AND owner_id = ? AND submission_state = 'SUBMITTING'`,
   unknown: `UPDATE ncloud_speech_jobs SET submission_state = 'UNKNOWN'
@@ -369,7 +369,11 @@ async function submitJob(args, config, db, owner, fetchImpl, timeoutMs, uploadTi
   const hash = await digest(JSON.stringify({ provider_scope: scope, endpoint: spec.endpoint,
     payload: spec.body }));
   const jobId = "job_" + crypto.randomUUID();
-  const changes = await store.run(SQL.claim, jobId, owner, args.request_id, scope, hash, Date.now());
+  // Hash the original request before deriving the opaque provider name. The user's
+  // filename is never persisted; the per-job name never changes duplicate fingerprints.
+  const providerFilename = spec.endpoint === "/recognizer/upload"
+    ? "audio_" + jobId.slice(4) + "." + args.filename.split(".").at(-1).toLowerCase() : null;
+  const changes = await store.run(SQL.claim, jobId, owner, args.request_id, scope, hash, Date.now(), providerFilename);
   if (changes !== 0 && changes !== 1) throw new SafeError(STORE_FAILURE);
   const row = await store.first(SQL.request, owner, args.request_id);
   if (!row) throw new SafeError(STORE_FAILURE);
@@ -379,6 +383,8 @@ async function submitJob(args, config, db, owner, fetchImpl, timeoutMs, uploadTi
   }
   if (changes === 0) return jobSummary(row);
   if (row.job_id !== jobId || row.submission_state !== "SUBMITTING") throw new SafeError(STORE_FAILURE);
+  if (row.provider_filename !== providerFilename) throw new SafeError(STORE_FAILURE);
+  if (providerFilename !== null) spec.body.filename = providerFilename;
   // The confirmed durable claim is a permanent tombstone even if execution crashes next.
   try {
     const result = await upstream(config, "POST", spec.endpoint, spec.body, fetchImpl,
@@ -459,11 +465,12 @@ async function readJob(args, config, db, owner, fetchImpl, timeoutMs, paginated 
         timer = setTimeout(() => { controller.abort(); reject(new Error()); }, timeoutMs);
       });
       const raw = await Promise.race([fetchResultObject(key, storage, fetchImpl, controller.signal), deadline]);
-      if (!isObject(raw) || !validToken(raw.token) || raw.token !== row.upstream_token || raw.result !== "COMPLETED") {
+      if (!isObject(raw) || !validToken(raw.token) || raw.token !== row.upstream_token || !["COMPLETED", "SUCCEEDED"].includes(raw.result) ||
+          !(typeof raw.text === "string" || Array.isArray(raw.segments))) {
         throw new Error();
       }
       resultSource = "object_storage";
-      return { ...normalize(raw), fields_present: { text: typeof raw.text === "string", segments: Array.isArray(raw.segments) } };
+      return { ...normalize(raw), status: "COMPLETED", fields_present: { text: typeof raw.text === "string", segments: Array.isArray(raw.segments) } };
     } catch { throw new SafeError("RESULT_STORAGE_UNAVAILABLE: existing result could not be read or matched to this owned job. Do not re-transcribe."); }
     finally { clearTimeout(timer); }
   }
@@ -472,7 +479,7 @@ async function readJob(args, config, db, owner, fetchImpl, timeoutMs, paginated 
     else {
       result = await upstream(config, "GET", "/recognizer/" + row.upstream_token, undefined, fetchImpl, timeoutMs);
       if (result.status === "COMPLETED" && !result.text.length && !result.segments.length && storage.configured) {
-        const key = resultKeyForToken(storage, row.upstream_token);
+        const key = resultKeyForToken(storage, row.upstream_token, row.provider_filename);
         if (key) result = await readStored(key);
       }
     }

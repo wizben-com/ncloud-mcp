@@ -11,6 +11,7 @@ export const speechJobs = sqliteTable("ncloud_speech_jobs", {
   submissionState: text("submission_state").notNull(),
   upstreamToken: text("upstream_token"),
   providerState: text("provider_state"),
+  providerFilename: text("provider_filename"),
   createdAt: integer("created_at").notNull(),
 }, (table) => [
   uniqueIndex("speech_owner_request_unique").on(table.ownerId, table.requestId),

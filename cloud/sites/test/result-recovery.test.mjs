@@ -25,11 +25,13 @@ test('completed without transcript distinguishes processing success from result 
 test('known storage key can recover matching result; wrong owner/token never reveals transcript',async()=>{
  const DB=new SqliteD1();try{
   const bindings={...env,...storage,DB},job_id=await seedAccepted(bindings);let calls=0;
-  const server=createWorker({fetchImpl:async(url,init)=>{calls++;assert.equal(init.method,'GET');assert.match(url,/kr.object.ncloudstorage.com/);return Response.json({result:'COMPLETED',token:'synthetic-token',text:'Safe test result',segments:[]});}});
+  const server=createWorker({fetchImpl:async(url,init)=>{calls++;assert.equal(init.method,'GET');assert.match(url,/kr.object.ncloudstorage.com/);return Response.json({result:'SUCCEEDED',token:'synthetic-token',text:'Safe test result',segments:[]});}});
   const wrong=await call(server,bindings,'clova_speech_job_result_page',{job_id,object_key:'results/test.json'},'other-owner');assert.equal(wrong.isError,true);assert.equal(calls,0);
   const ok=await call(server,bindings,'clova_speech_job_result_page',{job_id,object_key:'results/test.json',limit:4});
-  assert.equal(ok.isError,false);assert.equal(ok.structuredContent.text,'Safe');assert.equal(ok.structuredContent.next_offset,4);assert.equal(ok.structuredContent.result_source,'object_storage');
+  assert.equal(ok.isError,false);assert.equal(ok.structuredContent.text,'Safe');assert.equal(ok.structuredContent.next_offset,4);assert.equal(ok.structuredContent.result_source,'object_storage');assert.equal(ok.structuredContent.provider_state,'COMPLETED');
   assert.ok(!JSON.stringify(ok).includes('synthetic-token'));
+  const envelope=createWorker({fetchImpl:async()=>Response.json({result:'SUCCEEDED',token:'synthetic-token'})});
+  assert.equal((await call(envelope,bindings,'clova_speech_job_result_page',{job_id,object_key:'results/test.json'})).isError,true);
   const mismatch=createWorker({fetchImpl:async()=>Response.json({result:'COMPLETED',token:'other-token',text:'SECRET_OTHER_JOB'})});
   const denied=await call(mismatch,bindings,'clova_speech_job_result_page',{job_id,object_key:'results/other.json'});assert.equal(denied.isError,true);assert.ok(!JSON.stringify(denied).includes('SECRET_OTHER_JOB'));
  }finally{DB.close();}

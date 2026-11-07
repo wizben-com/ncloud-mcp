@@ -37,7 +37,7 @@ export async function seedAccepted(bindings, owner = "synthetic-owner") {
   const scope = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",
     new TextEncoder().encode(bindings.NCLOUD_SPEECH_INVOKE_URL))), (b) => b.toString(16).padStart(2, "0")).join("");
   const id = "job_" + crypto.randomUUID();
-  await bindings.DB.prepare(SQL.claim).bind(id, owner, crypto.randomUUID(), scope, "0".repeat(64), 0).run();
+  await bindings.DB.prepare(SQL.claim).bind(id, owner, crypto.randomUUID(), scope, "0".repeat(64), 0, null).run();
   await bindings.DB.prepare(SQL.accepted).bind("synthetic-token", "SUCCEEDED", id, owner).run();
   return id;
 }

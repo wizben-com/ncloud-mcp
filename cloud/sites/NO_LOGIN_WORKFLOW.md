@@ -32,8 +32,8 @@ was successfully recovered. Retrieve the existing result artifact, never resubmi
 
 An optional read-only Object Storage module is OFF by default. It uses the fixed
 Korea endpoint kr.object.ncloudstorage.com and kr-standard region, one bucket,
-a nonempty prefix, GET only, no redirects, 16 MiB limit, and bounded deadlines.
-The returned JSON must be COMPLETED and its token must match the owned job's
+a nonempty prefix (or explicitly authorized bucket root), GET only, no redirects, 16 MiB limit, and bounded deadlines.
+The returned JSON must be SUCCEEDED or COMPLETED and its token must match the owned job's
 server-side token before any transcript is exposed. No list/write/delete/ACL
 operations or credential fallback exist.
 
@@ -41,10 +41,15 @@ Configuration, only after explicit authorization:
 - NCLOUD_SPEECH_RESULT_STORAGE_ENABLED=true
 - NCLOUD_SPEECH_RESULT_BUCKET: identified result bucket
 - NCLOUD_SPEECH_RESULT_PREFIX: allowed nonempty path ending in /
+- NCLOUD_SPEECH_RESULT_ALLOW_BUCKET_ROOT=true: explicitly permit an empty prefix
+  only for an authorized result bucket whose artifacts are stored at its root.
+  Default false; enabling this does not weaken a configured nonempty prefix.
 - NCLOUD_SPEECH_RESULT_ACCESS_KEY and NCLOUD_SPEECH_RESULT_SECRET_KEY: Site Secrets
   for a separately approved read-only subaccount, not the main-account key.
 - Optional NCLOUD_SPEECH_RESULT_KEY_TEMPLATE: verified actual object-key pattern
-  under the prefix containing exactly one {token}. There is NO guessed default.
+  under the prefix containing exactly one {token} and optionally one {filename}.
+  {filename} is the persisted opaque upload name, never a lookup-time user input.
+  There is NO guessed default.
 
 NAVER documentation does not establish IAM prefix-scoped permissions: request the
 narrowest supported bucket scope and additionally enforce the prefix in code.
@@ -112,3 +117,15 @@ completion, paged reconstruction and retrieval in a fresh client session. Do not
 re-run a customer meeting as an unannounced paid smoke test. Offline tests do not
 prove real NAVER behavior or platform runtime limits. These source changes do not
 deploy, alter secrets, or perform any live call.
+
+A real result artifact uses `result=SUCCEEDED`; matched storage artifacts are exposed
+as completed results. One verified upload artifact used `<filename>_<token>.json`.
+This observation does not establish a universal naming contract. Do not apply a
+single sample filename template to unrelated future submissions.
+
+For newly submitted upload_url jobs, the adapter sends an opaque audio_<job UUID>
+filename retaining only the actual supported extension and saves that name before
+POST. It does not store the original filename. A verified {filename}_{token}.json
+template enables direct retrieval without listing objects. Existing jobs have no
+backfilled filename; use their exact object key or a separately verified fixed
+filename template. Original request fingerprint/idempotency semantics are unchanged.

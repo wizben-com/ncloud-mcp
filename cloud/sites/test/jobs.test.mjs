@@ -74,7 +74,7 @@ test("SQLite UNIQUE claim persists across connections; UNKNOWN correction cannot
   const filename = join(directory, "synthetic.sqlite");
   const a = db({ filename }), b = db({ filename, migrate: false });
   const id = "job_" + crypto.randomUUID();
-  const values = [id, "synthetic-owner", args.request_id, "0".repeat(64), "1".repeat(64), 0];
+  const values = [id, "synthetic-owner", args.request_id, "0".repeat(64), "1".repeat(64), 0, null];
   assert.equal((await a.prepare(SQL.claim).bind(...values).run()).meta.changes, 1);
   assert.equal((await b.prepare(SQL.claim).bind("job_" + crypto.randomUUID(), ...values.slice(1)).run()).meta.changes, 0);
   // Simulate the crash window: a new Worker sees the durable SUBMITTING tombstone.
